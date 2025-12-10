@@ -101,7 +101,6 @@ class L1BatchProcessor(BaseProcessor[L1Config, L1Input, L1Output]):
         return entities
 
 
-# Register processor factories - NOW ACTUALLY USED BY REGISTRY!
 @processor_registry.register("l1_default")
 def create_l1_processor(config_dict: dict, pipeline: list = None) -> L1Processor:
     """Factory: creates component + processor"""
