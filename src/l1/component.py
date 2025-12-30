@@ -1,11 +1,9 @@
 import spacy
 from spacy.language import Language
 from src.core.base import BaseComponent
-from src.core.registry import component_registry
 from .models import L1Config, L1Entity
 
 
-@component_registry.register("l1_spacy")
 class L1Component(BaseComponent[L1Config]):
     """spaCy-based entity extraction component"""
     
@@ -102,7 +100,6 @@ class L1Component(BaseComponent[L1Config]):
         for chunk in doc.noun_chunks:
             span = (chunk.start_char, chunk.end_char)
             
-            # Check overlap with existing entities
             overlap = False
             for (s, e) in seen_spans:
                 if not (chunk.end_char <= s or chunk.start_char >= e):

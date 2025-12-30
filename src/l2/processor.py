@@ -1,12 +1,13 @@
 from typing import Any, List, Union
 from src.core.base import BaseProcessor
-from src.core.registry import processor_registry, component_registry
-from src.core.database_record import DatabaseRecord
-from .models import L2Config, L2Input, L2Output
+from src.core.registry import processor_registry
+from .models import L2Config, L2Input, L2Output, DatabaseRecord
 from .component import DatabaseChainComponent
 
 
 class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
+    """Multi-layer database search processor"""
+    
     def __init__(
         self,
         config: L2Config,
@@ -71,10 +72,10 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
             flat.extend(sublist)
         return flat
 
+
 @processor_registry.register("l2_chain")
-@processor_registry.register("l2_processor")
 def create_l2_processor(config_dict: dict, pipeline: list = None) -> L2Processor:
+    """Factory: creates component + processor"""
     config = L2Config(**config_dict)
-    component_cls = component_registry.get("l2_processor")
-    component = component_cls(config)
+    component = DatabaseChainComponent(config)
     return L2Processor(config, component, pipeline)

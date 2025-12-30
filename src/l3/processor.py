@@ -1,15 +1,17 @@
 from typing import Any, List
 from src.core.base import BaseProcessor
-from src.core.registry import processor_registry, component_registry
+from src.core.registry import processor_registry
 from .models import L3Config, L3Input, L3Output, L3Entity
-from .component import L3BaseComponent
+from .component import L3Component
 
 
 class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
+    """GLiNER entity linking processor"""
+    
     def __init__(
         self,
         config: L3Config,
-        component: L3BaseComponent,
+        component: L3Component,
         pipeline: list[tuple[str, dict[str, Any]]] = None
     ):
         super().__init__(config, component, pipeline)
@@ -24,20 +26,25 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         ]
     
     def __call__(self, texts: List[str], candidates: List[List[Any]]) -> L3Output:
+        """Process texts with candidate labels"""
         all_entities = []
         
         for text, text_candidates in zip(texts, candidates):
+            # Create labels from candidates
             if self.schema:
                 labels = self._create_gliner_labels(text_candidates)
             else:
                 labels = [self._extract_label(c) for c in text_candidates]
             
+            # Predict entities
             entities = self.component.predict_entities(text, labels)
             
+            # Apply rest of pipeline
             for method_name, kwargs in self.pipeline[1:]:
                 method = getattr(self.component, method_name)
                 entities = method(entities, **kwargs)
             
+            # Apply ranking if configured
             if self.schema.get('ranking'):
                 entities = self._rank_entities(entities, text_candidates)
             
@@ -46,11 +53,14 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         return L3Output(entities=all_entities)
     
     def _extract_label(self, candidate: Any) -> str:
+        """Extract label from candidate"""
         if hasattr(candidate, 'label'):
             return candidate.label
         return str(candidate)
     
+    ## TODO replace candidates with labels
     def _create_gliner_labels(self, candidates: List[Any]) -> List[str]:
+        """Create GLiNER labels using schema template"""
         template = self.schema.get('template', '{label}')
         labels = []
         seen = set()
@@ -77,8 +87,11 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                         seen.add(candidate.label.lower())
         
         return labels
-    # TODO move to l0
+    
+    # TODO: move to l0
     def _rank_entities(self, entities: List[L3Entity], candidates: List[Any]) -> List[L3Entity]:
+        """Re-rank entities using multiple scoring factors"""
+        # Build label to candidate mapping
         label_to_candidate = {}
         for c in candidates:
             if hasattr(c, 'label'):
@@ -88,6 +101,7 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                         if alias not in label_to_candidate:
                             label_to_candidate[alias] = c
         
+        # Calculate weighted scores
         for entity in entities:
             total_score = 0.0
             total_weight = 0.0
@@ -113,26 +127,9 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         return sorted(entities, key=lambda x: x.score, reverse=True)
 
 
-@processor_registry.register("l3_default")
-@processor_registry.register("l3_gliner")
-def create_l3_gliner_processor(config_dict: dict, pipeline: list = None) -> L3Processor:
-    config = L3Config(**config_dict)
-    component_cls = component_registry.get("l3_gliner")
-    component = component_cls(config)
-    return L3Processor(config, component, pipeline)
-
-
 @processor_registry.register("l3_batch")
-def create_l3_batch_processor(config_dict: dict, pipeline: list = None) -> L3Processor:
+def create_l3_processor(config_dict: dict, pipeline: list = None) -> L3Processor:
+    """Factory: creates component + processor"""
     config = L3Config(**config_dict)
-    component_cls = component_registry.get("l3_batch")
-    component = component_cls(config)
-    return L3Processor(config, component, pipeline)
-
-
-@processor_registry.register("l3_strict")
-def create_l3_strict_processor(config_dict: dict, pipeline: list = None) -> L3Processor:
-    config = L3Config(**config_dict)
-    component_cls = component_registry.get("l3_strict")
-    component = component_cls(config)
+    component = L3Component(config)
     return L3Processor(config, component, pipeline)

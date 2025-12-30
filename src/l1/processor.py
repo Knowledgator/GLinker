@@ -5,38 +5,6 @@ from .models import L1Config, L1Input, L1Output
 from .component import L1Component
 
 
-class L1Processor(BaseProcessor[L1Config, L1Input, L1Output]):
-    """Processor for L1 entity extraction"""
-    
-    def __init__(
-        self,
-        config: L1Config,
-        component: L1Component,
-        pipeline: list[tuple[str, dict[str, Any]]] = None
-    ):
-        super().__init__(config, component, pipeline)
-        self._validate_pipeline()
-    
-    def _default_pipeline(self) -> list[tuple[str, dict[str, Any]]]:
-        """Default pipeline for entity extraction"""
-        return [
-            ("extract_entities", {}),
-            ("filter_by_length", {}),
-            ("deduplicate", {}),
-            ("sort_by_position", {})
-        ]
-    
-    def __call__(self, input_data: L1Input) -> L1Output:
-        """Process batch of texts through pipeline"""
-        results = []
-        
-        for text in input_data.texts:
-            entities = self._execute_pipeline(text, self.pipeline)
-            results.append(entities)
-        
-        return L1Output(entities=results)
-
-
 class L1BatchProcessor(BaseProcessor[L1Config, L1Input, L1Output]):
     """Optimized batch processor using spaCy pipe"""
     
@@ -99,14 +67,6 @@ class L1BatchProcessor(BaseProcessor[L1Config, L1Input, L1Output]):
             ))
         
         return entities
-
-
-@processor_registry.register("l1_default")
-def create_l1_processor(config_dict: dict, pipeline: list = None) -> L1Processor:
-    """Factory: creates component + processor"""
-    config = L1Config(**config_dict)
-    component = L1Component(config)
-    return L1Processor(config, component, pipeline)
 
 
 @processor_registry.register("l1_batch")

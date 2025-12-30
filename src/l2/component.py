@@ -7,9 +7,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from src.core.base import BaseComponent
-from src.core.registry import component_registry
-from src.core.database_record import DatabaseRecord
-from .models import L2Config, LayerConfig, FuzzyConfig
+from .models import L2Config, LayerConfig, FuzzyConfig, DatabaseRecord
 
 
 class DatabaseLayer(ABC):
@@ -322,8 +320,9 @@ class PostgresLayer(DatabaseLayer):
             return False
 
 
-@component_registry.register("l2_chain")
 class DatabaseChainComponent(BaseComponent[L2Config]):
+    """Multi-layer database chain component"""
+    
     def _setup(self):
         self.layers: List[DatabaseLayer] = []
         

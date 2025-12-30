@@ -1,9 +1,13 @@
 from pathlib import Path
 import yaml
 from .registry import processor_registry
-from .dag_executor import DAGPipeline, DAGExecutor
-from .pipe_node import PipeNode
-from .input_config import InputConfig, OutputConfig
+from .dag import DAGPipeline, DAGExecutor, PipeNode, InputConfig, OutputConfig
+
+
+def load_yaml(path: str | Path) -> dict:
+    """Load YAML configuration file"""
+    with open(path, 'r') as f:
+        return yaml.safe_load(f)
 
 
 class ProcessorFactory:
@@ -43,8 +47,7 @@ class ProcessorFactory:
                 output: {key: "result"}
                 config: {...}
         """
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+        config = load_yaml(config_path)
         
         nodes = []
         for node_cfg in config['nodes']:
