@@ -1,14 +1,3 @@
-"""
-DAG Pipeline System
-
-All DAG-related classes in one place:
-- InputConfig, OutputConfig, ReshapeConfig
-- PipeNode
-- PipeContext
-- FieldResolver
-- DAGPipeline, DAGExecutor
-"""
-
 from typing import Dict, List, Set, Any, Optional, Literal, Union
 from collections import defaultdict, deque, OrderedDict
 from pydantic import BaseModel, Field
