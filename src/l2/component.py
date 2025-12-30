@@ -1,582 +1,420 @@
-from abc import abstractmethod
-from typing import List
-import psycopg2
+from abc import ABC, abstractmethod
+from typing import List, Dict, Any
 import redis
+import json
 from elasticsearch import Elasticsearch
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
 from src.core.base import BaseComponent
 from src.core.registry import component_registry
-from .models import L2Config, L2Candidate, PostgresConfig, ElasticsearchConfig, RedisConfig
+from src.core.database_record import DatabaseRecord
+from .models import L2Config, LayerConfig, FuzzyConfig
 
 
-class L2BaseComponent(BaseComponent[L2Config]):
-    """Base for all L2 components - only common utilities"""
+class DatabaseLayer(ABC):
+    def __init__(self, config: LayerConfig):
+        self.config = config
+        self.priority = config.priority
+        self.ttl = config.ttl
+        self.write = config.write
+        self.cache_policy = config.cache_policy
+        self.field_mapping = config.field_mapping
+        self.fuzzy_config = config.fuzzy or FuzzyConfig()
+        self._setup()
     
     @abstractmethod
-    def get_available_methods(self) -> List[str]:
+    def _setup(self):
         pass
     
-    def filter_by_popularity(
-        self, 
-        candidates: List[L2Candidate],
-        min_popularity: int = None
-    ) -> List[L2Candidate]:
-        threshold = min_popularity if min_popularity is not None else self.config.min_popularity
-        return [c for c in candidates if c.popularity >= threshold]
+    def normalize_query(self, query: str) -> str:
+        return query.lower().strip()
     
-    def deduplicate_candidates(self, candidates: List[L2Candidate]) -> List[L2Candidate]:
-        seen = set()
-        unique = []
-        for candidate in candidates:
-            if candidate.entity_id not in seen:
-                unique.append(candidate)
-                seen.add(candidate.entity_id)
-        return unique
+    @abstractmethod
+    def search(self, query: str) -> List[DatabaseRecord]:
+        pass
     
-    def limit_candidates(
-        self, 
-        candidates: List[L2Candidate],
-        limit: int = None
-    ) -> List[L2Candidate]:
-        max_limit = limit if limit is not None else self.config.max_candidates
-        return candidates[:max_limit]
+    @abstractmethod
+    def search_fuzzy(self, query: str) -> List[DatabaseRecord]:
+        pass
+    
+    def supports_fuzzy(self) -> bool:
+        return self.fuzzy_config is not None
+    
+    @abstractmethod
+    def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
+        pass
+    
+    @abstractmethod
+    def is_available(self) -> bool:
+        pass
+    
+    def map_to_record(self, raw_data: Dict[str, Any]) -> DatabaseRecord:
+        mapped = {}
+        for standard_field, db_field in self.field_mapping.items():
+            if db_field in raw_data:
+                mapped[standard_field] = raw_data[db_field]
+        mapped['source'] = self.config.type
+        return DatabaseRecord(**mapped)
 
 
-@component_registry.register("l2_postgres")
-class L2PostgresComponent(L2BaseComponent):
-    """PostgreSQL component with its specific methods"""
-    
+class RedisLayer(DatabaseLayer):
     def _setup(self):
-        db_cfg = self.config.database_config
-        if isinstance(db_cfg, dict):
-            db_cfg = PostgresConfig(**db_cfg)
-        
-        self.conn = psycopg2.connect(
-            host=db_cfg.host,
-            port=db_cfg.port,
-            database=db_cfg.database,
-            user=db_cfg.user,
-            password=db_cfg.password
-        )
-    
-    def get_available_methods(self) -> List[str]:
-        return [
-            "search_exact",
-            "search_fuzzy_levenshtein",
-            "search_by_popularity",
-            "search_by_type",
-            "bulk_search_exact",
-            "filter_by_popularity",
-            "deduplicate_candidates",
-            "limit_candidates"
-        ]
-    
-    def search_exact(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        cursor = self.conn.cursor()
-        
-        cursor.execute("""
-            SELECT e.entity_id, e.label, e.entity_type, e.popularity,
-                   ARRAY_AGG(DISTINCT a.alias_text) as aliases
-            FROM entities e
-            JOIN aliases a ON e.entity_id = a.entity_id
-            WHERE LOWER(a.alias_text) = LOWER(%s)
-            GROUP BY e.entity_id, e.label, e.entity_type, e.popularity
-            ORDER BY e.popularity DESC
-            LIMIT %s
-        """, (mention, max_limit))
-        
-        candidates = []
-        for row in cursor.fetchall():
-            candidates.append(L2Candidate(
-                entity_id=row[0],
-                label=row[1],
-                entity_type=row[2],
-                popularity=row[3],
-                aliases=row[4] or []
-            ))
-        
-        cursor.close()
-        return candidates
-    
-    def search_fuzzy_levenshtein(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        cursor = self.conn.cursor()
-        
-        cursor.execute("""
-            SELECT e.entity_id, e.label, e.entity_type, e.popularity,
-                   ARRAY_AGG(DISTINCT a.alias_text) as aliases,
-                   MIN(levenshtein(LOWER(a.alias_text), LOWER(%s))) as distance
-            FROM entities e
-            JOIN aliases a ON e.entity_id = a.entity_id
-            WHERE levenshtein(LOWER(a.alias_text), LOWER(%s)) <= %s
-            GROUP BY e.entity_id, e.label, e.entity_type, e.popularity
-            ORDER BY distance ASC, e.popularity DESC
-            LIMIT %s
-        """, (mention, mention, self.config.fuzzy_max_distance, max_limit))
-        
-        candidates = []
-        for row in cursor.fetchall():
-            candidates.append(L2Candidate(
-                entity_id=row[0],
-                label=row[1],
-                entity_type=row[2],
-                popularity=row[3],
-                aliases=row[4] or []
-            ))
-        
-        cursor.close()
-        return candidates
-    
-    def search_by_popularity(self, mention: str, min_pop: int = 10, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        cursor = self.conn.cursor()
-        
-        cursor.execute("""
-            SELECT e.entity_id, e.label, e.entity_type, e.popularity,
-                   ARRAY_AGG(DISTINCT a.alias_text) as aliases
-            FROM entities e
-            JOIN aliases a ON e.entity_id = a.entity_id
-            WHERE LOWER(a.alias_text) = LOWER(%s) AND e.popularity >= %s
-            GROUP BY e.entity_id, e.label, e.entity_type, e.popularity
-            ORDER BY e.popularity DESC
-            LIMIT %s
-        """, (mention, min_pop, max_limit))
-        
-        candidates = []
-        for row in cursor.fetchall():
-            candidates.append(L2Candidate(
-                entity_id=row[0],
-                label=row[1],
-                entity_type=row[2],
-                popularity=row[3],
-                aliases=row[4] or []
-            ))
-        
-        cursor.close()
-        return candidates
-    
-    def search_by_type(self, mention: str, entity_type: str, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        cursor = self.conn.cursor()
-        
-        cursor.execute("""
-            SELECT e.entity_id, e.label, e.entity_type, e.popularity,
-                   ARRAY_AGG(DISTINCT a.alias_text) as aliases
-            FROM entities e
-            JOIN aliases a ON e.entity_id = a.entity_id
-            WHERE LOWER(a.alias_text) = LOWER(%s) AND e.entity_type = %s
-            GROUP BY e.entity_id, e.label, e.entity_type, e.popularity
-            ORDER BY e.popularity DESC
-            LIMIT %s
-        """, (mention, entity_type, max_limit))
-        
-        candidates = []
-        for row in cursor.fetchall():
-            candidates.append(L2Candidate(
-                entity_id=row[0],
-                label=row[1],
-                entity_type=row[2],
-                popularity=row[3],
-                aliases=row[4] or []
-            ))
-        
-        cursor.close()
-        return candidates
-    
-    def bulk_search_exact(self, mentions: List[str], limit: int = None) -> List[List[L2Candidate]]:
-        max_limit = limit or self.config.max_candidates
-        cursor = self.conn.cursor()
-        
-        cursor.execute("""
-            SELECT a.alias_text, e.entity_id, e.label, e.entity_type, e.popularity,
-                   ARRAY_AGG(DISTINCT a2.alias_text) as aliases
-            FROM unnest(%s::text[]) AS input_alias(alias_text)
-            JOIN aliases a ON LOWER(a.alias_text) = LOWER(input_alias.alias_text)
-            JOIN entities e ON e.entity_id = a.entity_id
-            JOIN aliases a2 ON e.entity_id = a2.entity_id
-            GROUP BY a.alias_text, e.entity_id, e.label, e.entity_type, e.popularity
-            ORDER BY a.alias_text, e.popularity DESC
-        """, (mentions,))
-        
-        results = {}
-        for row in cursor.fetchall():
-            mention = row[0]
-            if mention not in results:
-                results[mention] = []
-            
-            if len(results[mention]) < max_limit:
-                results[mention].append(L2Candidate(
-                    entity_id=row[1],
-                    label=row[2],
-                    entity_type=row[3],
-                    popularity=row[4],
-                    aliases=row[5] or []
-                ))
-        
-        cursor.close()
-        return [results.get(m, []) for m in mentions]
-    
-    def __del__(self):
-        if hasattr(self, 'conn') and self.conn:
-            self.conn.close()
-
-
-@component_registry.register("l2_elasticsearch")
-class L2ElasticsearchComponent(L2BaseComponent):
-    """Elasticsearch component with its specific methods"""
-    
-    def _setup(self):
-        es_cfg = self.config.database_config
-        if isinstance(es_cfg, dict):
-            es_cfg = ElasticsearchConfig(**es_cfg)
-        
-        self.index_name = es_cfg.index_name
-        
-        if es_cfg.api_key:
-            self.client = Elasticsearch(es_cfg.hosts, api_key=es_cfg.api_key)
-        else:
-            self.client = Elasticsearch(es_cfg.hosts)
-    
-    def get_available_methods(self) -> List[str]:
-        return [
-            "search_exact",
-            "search_fuzzy_match",
-            "search_semantic",
-            "search_multi_field",
-            "search_with_boost",
-            "aggregation_by_type",
-            "filter_by_popularity",
-            "deduplicate_candidates",
-            "limit_candidates"
-        ]
-    
-    def search_exact(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        """Elasticsearch exact term search"""
-        max_limit = limit or self.config.max_candidates
-        
-        # USE MATCH INSTEAD OF TERM for case-insensitive search
-        query = {
-            "query": {
-                "match": {
-                    "aliases": {
-                        "query": mention,
-                        "operator": "and"
-                    }
-                }
-            },
-            "size": max_limit,
-            "sort": [{"popularity": {"order": "desc"}}]
-        }
-        
-        response = self.client.search(index=self.index_name, body=query)
-        
-        candidates = []
-        for hit in response['hits']['hits']:
-            source = hit['_source']
-            candidates.append(L2Candidate(
-                entity_id=source['entity_id'],
-                label=source['label'],
-                entity_type=source['entity_type'],
-                popularity=source['popularity'],
-                aliases=source.get('aliases', [])
-            ))
-        
-        return candidates
-    
-    def search_fuzzy_match(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        
-        query = {
-            "query": {
-                "match": {
-                    "aliases": {
-                        "query": mention,
-                        "fuzziness": "AUTO"
-                    }
-                }
-            },
-            "size": max_limit,
-            "sort": [
-                {"_score": {"order": "desc"}},
-                {"popularity": {"order": "desc"}}
-            ]
-        }
-        
-        response = self.client.search(index=self.index_name, body=query)
-        
-        candidates = []
-        for hit in response['hits']['hits']:
-            source = hit['_source']
-            candidates.append(L2Candidate(
-                entity_id=source['entity_id'],
-                label=source['label'],
-                entity_type=source['entity_type'],
-                popularity=source['popularity'],
-                aliases=source.get('aliases', [])
-            ))
-        
-        return candidates
-    
-    def search_semantic(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        
-        query = {
-            "query": {
-                "script_score": {
-                    "query": {"match_all": {}},
-                    "script": {
-                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                        "params": {"query_vector": self._get_embedding(mention)}
-                    }
-                }
-            },
-            "size": max_limit
-        }
-        
-        response = self.client.search(index=self.index_name, body=query)
-        
-        candidates = []
-        for hit in response['hits']['hits']:
-            source = hit['_source']
-            candidates.append(L2Candidate(
-                entity_id=source['entity_id'],
-                label=source['label'],
-                entity_type=source['entity_type'],
-                popularity=source['popularity'],
-                aliases=source.get('aliases', [])
-            ))
-        
-        return candidates
-    
-    def search_multi_field(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        
-        query = {
-            "query": {
-                "multi_match": {
-                    "query": mention,
-                    "fields": ["label^3", "aliases^2", "description"],
-                    "type": "best_fields"
-                }
-            },
-            "size": max_limit,
-            "sort": [
-                {"_score": {"order": "desc"}},
-                {"popularity": {"order": "desc"}}
-            ]
-        }
-        
-        response = self.client.search(index=self.index_name, body=query)
-        
-        candidates = []
-        for hit in response['hits']['hits']:
-            source = hit['_source']
-            candidates.append(L2Candidate(
-                entity_id=source['entity_id'],
-                label=source['label'],
-                entity_type=source['entity_type'],
-                popularity=source['popularity'],
-                aliases=source.get('aliases', [])
-            ))
-        
-        return candidates
-    
-    def search_with_boost(self, mention: str, boost_popular: bool = True, limit: int = None) -> List[L2Candidate]:
-        max_limit = limit or self.config.max_candidates
-        
-        query = {
-            "query": {
-                "function_score": {
-                    "query": {"match": {"aliases": mention}},
-                    "field_value_factor": {
-                        "field": "popularity",
-                        "modifier": "log1p",
-                        "factor": 1.2
-                    }
-                }
-            },
-            "size": max_limit
-        }
-        
-        response = self.client.search(index=self.index_name, body=query)
-        
-        candidates = []
-        for hit in response['hits']['hits']:
-            source = hit['_source']
-            candidates.append(L2Candidate(
-                entity_id=source['entity_id'],
-                label=source['label'],
-                entity_type=source['entity_type'],
-                popularity=source['popularity'],
-                aliases=source.get('aliases', [])
-            ))
-        
-        return candidates
-    
-    def aggregation_by_type(self, mention: str) -> dict:
-        query = {
-            "query": {"match": {"aliases": mention}},
-            "size": 0,
-            "aggs": {
-                "types": {
-                    "terms": {
-                        "field": "entity_type.keyword",
-                        "size": 20
-                    }
-                }
-            }
-        }
-        
-        response = self.client.search(index=self.index_name, body=query)
-        return response['aggregations']['types']['buckets']
-    
-    def _get_embedding(self, text: str) -> List[float]:
-        return [0.0] * 768
-    
-    def __del__(self):
-        if hasattr(self, 'client') and self.client:
-            self.client.close()
-
-@component_registry.register("l2_redis")
-class L2RedisComponent(L2BaseComponent):
-    """Redis component with its specific methods"""
-    
-    def _setup(self):
-        redis_cfg = self.config.database_config
-        if isinstance(redis_cfg, dict):
-            redis_cfg = RedisConfig(**redis_cfg)
-        
         self.client = redis.Redis(
-            host=redis_cfg.host,
-            port=redis_cfg.port,
-            db=redis_cfg.db,
-            password=redis_cfg.password,
-            decode_responses=True
+            host=self.config.config.get('host', 'localhost'),
+            port=self.config.config.get('port', 6379),
+            db=self.config.config.get('db', 0),
+            password=self.config.config.get('password'),
+            decode_responses=False
         )
+    
+    def supports_fuzzy(self) -> bool:
+        return False
+    
+    def search(self, query: str) -> List[DatabaseRecord]:
+        query = self.normalize_query(query)
+        key = f"entity:{query}"
+        
+        try:
+            data = self.client.get(key)
+            if data:
+                if isinstance(data, bytes):
+                    data = data.decode('utf-8')
+                
+                records_data = json.loads(data)
+                
+                if isinstance(records_data, list):
+                    results = []
+                    for r in records_data:
+                        if isinstance(r, dict):
+                            r['source'] = 'redis'
+                            results.append(DatabaseRecord(**r))
+                        else:
+                            results.append(r)
+                    return results
+                
+                elif isinstance(records_data, dict):
+                    records_data['source'] = 'redis'
+                    return [DatabaseRecord(**records_data)]
+        
+        except Exception as e:
+            print(f"[ERROR Redis] Search error: {e}")
+        
+        return []
+    
+    def search_fuzzy(self, query: str) -> List[DatabaseRecord]:
+        return []
+    
+    def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
+        key = self.normalize_query(key)
+        cache_key = f"entity:{key}"
+        
+        try:
+            data = json.dumps([r.dict() for r in records])
+            self.client.setex(cache_key, ttl, data)
+        except Exception as e:
+            print(f"[ERROR Redis] Write error: {e}")
+    
+    def is_available(self) -> bool:
+        try:
+            self.client.ping()
+            return True
+        except:
+            return False
+
+
+class ElasticsearchLayer(DatabaseLayer):
+    def _setup(self):
+        self.client = Elasticsearch(
+            self.config.config['hosts'],
+            api_key=self.config.config.get('api_key')
+        )
+        self.index_name = self.config.config['index_name']
+    
+    def search(self, query: str) -> List[DatabaseRecord]:
+        query = self.normalize_query(query)
+        
+        try:
+            body = {
+                "query": {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["label^2", "aliases^1.5", "description"],
+                        "type": "best_fields"
+                    }
+                },
+                "size": 50
+            }
+            response = self.client.search(index=self.index_name, body=body)
+            return self._process_hits(response['hits']['hits'])
+        except Exception as e:
+            print(f"[ERROR ES] Search error: {e}")
+            return []
+    
+    def search_fuzzy(self, query: str) -> List[DatabaseRecord]:
+        query = self.normalize_query(query)
+        fuzzy_distance = self.fuzzy_config.max_distance
+        
+        try:
+            body = {
+                "query": {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["label^2", "aliases^1.5", "description"],
+                        "fuzziness": fuzzy_distance,
+                        "prefix_length": self.fuzzy_config.prefix_length,
+                        "max_expansions": 50
+                    }
+                },
+                "size": 50
+            }
+            response = self.client.search(index=self.index_name, body=body)
+            return self._process_hits(response['hits']['hits'])
+        except Exception as e:
+            print(f"[ERROR ES] Fuzzy error: {e}")
+            return []
+    
+    def _process_hits(self, hits: List[Dict]) -> List[DatabaseRecord]:
+        records = []
+        for hit in hits:
+            source = hit['_source']
+            source['_id'] = hit['_id']
+            source['source'] = 'elasticsearch'
+            record = self.map_to_record(source)
+            records.append(record)
+        return records
+    
+    def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
+        if not records:
+            return
+        
+        try:
+            bulk_body = []
+            for record in records:
+                bulk_body.append({"index": {"_index": self.index_name, "_id": record.entity_id}})
+                bulk_body.append(self._map_from_record(record))
+            
+            if bulk_body:
+                self.client.bulk(body=bulk_body, refresh=True)
+        except Exception as e:
+            print(f"[ERROR ES] Write error: {e}")
+    
+    def _map_from_record(self, record: DatabaseRecord) -> dict:
+        reverse_mapping = {v: k for k, v in self.field_mapping.items()}
+        doc = {}
+        for standard_field, value in record.dict().items():
+            if standard_field == 'source':
+                continue
+            if standard_field in reverse_mapping:
+                doc[reverse_mapping[standard_field]] = value
+            else:
+                doc[standard_field] = value
+        return doc
+    
+    def is_available(self) -> bool:
+        try:
+            return self.client.ping()
+        except:
+            return False
+
+
+class PostgresLayer(DatabaseLayer):
+    def _setup(self):
+        self.conn = psycopg2.connect(
+            host=self.config.config['host'],
+            port=self.config.config.get('port', 5432),
+            database=self.config.config['database'],
+            user=self.config.config['user'],
+            password=self.config.config['password']
+        )
+        
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+            self.conn.commit()
+        except Exception as e:
+            print(f"[WARN Postgres] pg_trgm: {e}")
+        finally:
+            cursor.close()
+    
+    def search(self, query: str) -> List[DatabaseRecord]:
+        query = self.normalize_query(query)
+        
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            sql = """
+                SELECT 
+                    e.entity_id,
+                    e.label,
+                    e.description,
+                    e.entity_type,
+                    e.popularity,
+                    COALESCE(array_agg(a.alias) FILTER (WHERE a.alias IS NOT NULL), ARRAY[]::text[]) as aliases
+                FROM entities e
+                LEFT JOIN aliases a ON e.entity_id = a.entity_id
+                WHERE LOWER(e.label) LIKE %s
+                   OR EXISTS (
+                       SELECT 1 FROM aliases a2 
+                       WHERE a2.entity_id = e.entity_id 
+                       AND LOWER(a2.alias) LIKE %s
+                   )
+                GROUP BY e.entity_id, e.label, e.description, e.entity_type, e.popularity
+                ORDER BY e.popularity DESC
+                LIMIT 50
+            """
+            cursor.execute(sql, (f"%{query}%", f"%{query}%"))
+            records = self._process_rows(cursor.fetchall())
+            cursor.close()
+            return records
+        except Exception as e:
+            print(f"[ERROR Postgres] Search error: {e}")
+            return []
+    
+    def search_fuzzy(self, query: str) -> List[DatabaseRecord]:
+        query = self.normalize_query(query)
+        threshold = self.fuzzy_config.min_similarity
+        
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            sql = """
+                SELECT 
+                    e.entity_id,
+                    e.label,
+                    e.description,
+                    e.entity_type,
+                    e.popularity,
+                    COALESCE(array_agg(a.alias) FILTER (WHERE a.alias IS NOT NULL), ARRAY[]::text[]) as aliases,
+                    similarity(LOWER(e.label), %s) AS sim_score
+                FROM entities e
+                LEFT JOIN aliases a ON e.entity_id = a.entity_id
+                WHERE similarity(LOWER(e.label), %s) >= %s
+                GROUP BY e.entity_id, e.label, e.description, e.entity_type, e.popularity
+                ORDER BY sim_score DESC, e.popularity DESC
+                LIMIT 50
+            """
+            cursor.execute(sql, (query, query, threshold))
+            records = self._process_rows(cursor.fetchall())
+            cursor.close()
+            return records
+        except Exception as e:
+            print(f"[ERROR Postgres] Fuzzy error: {e}")
+            return self.search(query)
+    
+    def _process_rows(self, rows: List[Dict]) -> List[DatabaseRecord]:
+        records = []
+        for row in rows:
+            row_dict = dict(row)
+            row_dict['source'] = 'postgres'
+            record = self.map_to_record(row_dict)
+            records.append(record)
+        return records
+    
+    def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
+        pass
+    
+    def is_available(self) -> bool:
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            return True
+        except:
+            return False
+
+
+@component_registry.register("l2_chain")
+class DatabaseChainComponent(BaseComponent[L2Config]):
+    def _setup(self):
+        self.layers: List[DatabaseLayer] = []
+        
+        for layer_config in self.config.layers:
+            if isinstance(layer_config, dict):
+                layer_config = LayerConfig(**layer_config)
+            
+            if layer_config.type == "redis":
+                layer = RedisLayer(layer_config)
+            elif layer_config.type == "elasticsearch":
+                layer = ElasticsearchLayer(layer_config)
+            elif layer_config.type == "postgres":
+                layer = PostgresLayer(layer_config)
+            else:
+                raise ValueError(f"Unknown layer type: {layer_config.type}")
+            
+            self.layers.append(layer)
+        
+        self.layers.sort(key=lambda x: x.priority)
     
     def get_available_methods(self) -> List[str]:
         return [
-            "search_exact",
-            "search_by_prefix",
-            "search_by_popularity",
-            "search_fuzzy_scan",
-            "get_by_id",
+            "search",
             "filter_by_popularity",
             "deduplicate_candidates",
-            "limit_candidates"
+            "limit_candidates",
+            "sort_by_popularity"
         ]
     
-    def search_exact(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        """Search for exact matches in Redis"""
-        max_limit = limit or self.config.max_candidates
+    def search(self, mention: str) -> List[DatabaseRecord]:
+        found_in_layer = None
+        results = []
         
-        # Get entity IDs from alias
-        alias_key = f"alias:{mention.lower()}"
-        entity_ids = self.client.smembers(alias_key)
-        
-        if not entity_ids:
-            return []
-        
-        # Get entity data and sort by popularity
-        candidates = []
-        for entity_id in entity_ids:
-            entity_data = self.client.hgetall(f"entity:{entity_id}")
-            if entity_data:
-                aliases = self.client.smembers(f"entity:{entity_id}:aliases")
-                candidates.append(L2Candidate(
-                    entity_id=entity_data['entity_id'],
-                    label=entity_data['label'],
-                    entity_type=entity_data['entity_type'],
-                    popularity=int(entity_data['popularity']),
-                    aliases=list(aliases)
-                ))
-        
-        # Sort by popularity
-        candidates.sort(key=lambda x: x.popularity, reverse=True)
-        return candidates[:max_limit]
-    
-    def search_by_prefix(self, prefix: str, limit: int = None) -> List[L2Candidate]:
-        """Redis-specific: search by prefix using SCAN"""
-        max_limit = limit or self.config.max_candidates
-        
-        pattern = f"alias:{prefix.lower()}*"
-        entity_ids = set()
-        
-        for key in self.client.scan_iter(match=pattern, count=100):
-            ids = self.client.smembers(key)
-            entity_ids.update(ids)
-            if len(entity_ids) >= max_limit * 2:
+        for layer in self.layers:
+            if not layer.is_available():
+                continue
+            
+            layer_results = []
+            
+            for mode in layer.config.search_mode:
+                if mode == "exact":
+                    layer_results.extend(layer.search(mention))
+                elif mode == "fuzzy":
+                    if layer.supports_fuzzy():
+                        layer_results.extend(layer.search_fuzzy(mention))
+            
+            if layer_results:
+                layer_results = self.deduplicate_candidates(layer_results)
+                results = layer_results
+                found_in_layer = layer
                 break
         
-        candidates = []
-        for entity_id in entity_ids:
-            entity_data = self.client.hgetall(f"entity:{entity_id}")
-            if entity_data:
-                aliases = self.client.smembers(f"entity:{entity_id}:aliases")
-                candidates.append(L2Candidate(
-                    entity_id=entity_data['entity_id'],
-                    label=entity_data['label'],
-                    entity_type=entity_data['entity_type'],
-                    popularity=int(entity_data['popularity']),
-                    aliases=list(aliases)
-                ))
+        if results and found_in_layer:
+            self._cache_write(mention, results, found_in_layer)
         
-        candidates.sort(key=lambda x: x.popularity, reverse=True)
-        return candidates[:max_limit]
+        return results
     
-    def search_by_popularity(self, mention: str, min_pop: int = 10, limit: int = None) -> List[L2Candidate]:
-        """Redis-specific: search with popularity threshold"""
-        candidates = self.search_exact(mention, limit)
-        return [c for c in candidates if c.popularity >= min_pop]
-    
-    def search_fuzzy_scan(self, mention: str, limit: int = None) -> List[L2Candidate]:
-        """Redis-specific: fuzzy search using Levenshtein on scanned aliases"""
-        from difflib import SequenceMatcher
-        
-        max_limit = limit or self.config.max_candidates
-        mention_lower = mention.lower()
-        
-        # Scan all aliases
-        candidates_map = {}
-        for key in self.client.scan_iter(match="alias:*", count=1000):
-            alias = key.replace("alias:", "")
+    def _cache_write(self, query: str, results: List[DatabaseRecord], source_layer: DatabaseLayer):
+        for layer in self.layers:
+            if layer.priority >= source_layer.priority:
+                continue
+            if not layer.write:
+                continue
             
-            # Simple fuzzy matching
-            similarity = SequenceMatcher(None, mention_lower, alias).ratio()
-            if similarity > 0.7:  # 70% similarity threshold
-                entity_ids = self.client.smembers(key)
-                for entity_id in entity_ids:
-                    if entity_id not in candidates_map:
-                        entity_data = self.client.hgetall(f"entity:{entity_id}")
-                        if entity_data:
-                            aliases = self.client.smembers(f"entity:{entity_id}:aliases")
-                            candidates_map[entity_id] = L2Candidate(
-                                entity_id=entity_data['entity_id'],
-                                label=entity_data['label'],
-                                entity_type=entity_data['entity_type'],
-                                popularity=int(entity_data['popularity']),
-                                aliases=list(aliases)
-                            )
-        
-        candidates = list(candidates_map.values())
-        candidates.sort(key=lambda x: x.popularity, reverse=True)
-        return candidates[:max_limit]
+            if layer.cache_policy == "always":
+                layer.write_cache(query, results, layer.ttl)
+            elif layer.cache_policy == "miss":
+                existing = layer.search(query)
+                if not existing:
+                    layer.write_cache(query, results, layer.ttl)
+            elif layer.cache_policy == "hit":
+                existing = layer.search(query)
+                if existing:
+                    layer.write_cache(query, results, layer.ttl)
     
-    def get_by_id(self, entity_id: str) -> L2Candidate:
-        """Redis-specific: get entity by ID"""
-        entity_data = self.client.hgetall(f"entity:{entity_id}")
-        if not entity_data:
-            return None
-        
-        aliases = self.client.smembers(f"entity:{entity_id}:aliases")
-        return L2Candidate(
-            entity_id=entity_data['entity_id'],
-            label=entity_data['label'],
-            entity_type=entity_data['entity_type'],
-            popularity=int(entity_data['popularity']),
-            aliases=list(aliases)
-        )
+    def filter_by_popularity(self, records: List[DatabaseRecord], min_popularity: int = None) -> List[DatabaseRecord]:
+        threshold = min_popularity if min_popularity is not None else self.config.min_popularity
+        return [r for r in records if r.popularity >= threshold]
     
-    def __del__(self):
-        if hasattr(self, 'client') and self.client:
-            self.client.close()
+    def deduplicate_candidates(self, records: List[DatabaseRecord]) -> List[DatabaseRecord]:
+        seen = set()
+        unique = []
+        for record in records:
+            if record.entity_id not in seen:
+                unique.append(record)
+                seen.add(record.entity_id)
+        return unique
+    
+    def limit_candidates(self, records: List[DatabaseRecord], limit: int = None) -> List[DatabaseRecord]:
+        max_cands = limit if limit is not None else self.config.max_candidates
+        return records[:max_cands]
+    
+    def sort_by_popularity(self, records: List[DatabaseRecord]) -> List[DatabaseRecord]:
+        return sorted(records, key=lambda x: x.popularity, reverse=True)

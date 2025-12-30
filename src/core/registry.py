@@ -3,13 +3,11 @@ from .base import BaseProcessor, BaseComponent
 
 
 class ComponentRegistry:
-    """Registry for components"""
-    
+
     def __init__(self):
         self._registry: Dict[str, Type[BaseComponent]] = {}
     
     def register(self, name: str):
-        """Decorator to register component"""
         def decorator(cls: Type[BaseComponent]):
             self._registry[name] = cls
             return cls
@@ -24,14 +22,11 @@ class ComponentRegistry:
         return list(self._registry.keys())
 
 
-class ProcessorRegistry:
-    """Registry for processors"""
-    
+class ProcessorRegistry:    
     def __init__(self):
         self._registry: Dict[str, Callable] = {}
     
     def register(self, name: str):
-        """Decorator to register processor factory"""
         def decorator(factory: Callable):
             self._registry[name] = factory
             return factory

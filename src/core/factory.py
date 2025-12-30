@@ -1,64 +1,104 @@
-from typing import Type
 from pathlib import Path
-from .base import BaseProcessor, BaseComponent, BaseConfig
-from .config_loader import ConfigLoader, PresetLoader
-from .registry import component_registry, processor_registry
+import yaml
+from .registry import processor_registry
+from .dag_executor import DAGPipeline, DAGExecutor
+from .pipe_node import PipeNode
+from .input_config import InputConfig, OutputConfig
 
 
 class ProcessorFactory:
-    """Factory for creating processors from configs"""
-    
-    @staticmethod
-    def create_from_config(
-        component_class: Type[BaseComponent],
-        processor_class: Type[BaseProcessor],
-        config_class: Type[BaseConfig],
-        config_path: str | Path,
-        processor_key: str = None
-    ) -> BaseProcessor:
-        """Create processor from YAML config file"""
-        
-        loaded = ConfigLoader.load_processor_config(config_path, processor_key)
-        
-        config = config_class(**loaded['config'])
-        component = component_class(config)
-        processor = processor_class(
-            config=config,
-            component=component,
-            pipeline=loaded['pipeline'] if loaded['pipeline'] else None
-        )
-        
-        return processor
-    
-    @staticmethod
-    def create_from_preset(
-        component_class: Type[BaseComponent],
-        processor_class: Type[BaseProcessor],
-        config_class: Type[BaseConfig],
-        presets_path: str | Path,
-        preset_name: str
-    ) -> BaseProcessor:
-        """Create processor from preset"""
-        
-        loader = PresetLoader(presets_path)
-        preset_data = loader.load_preset(preset_name)
-        
-        config = config_class(**preset_data['config'])
-        component = component_class(config)
-        processor = processor_class(
-            config=config,
-            component=component,
-            pipeline=preset_data['pipeline'] if preset_data['pipeline'] else None
-        )
-        
-        return processor
+    """Factory for creating pipelines from configs"""
     
     @staticmethod
     def create_from_registry(
         processor_name: str,
         config_dict: dict,
         pipeline: list[tuple[str, dict]] = None
-    ) -> BaseProcessor:
-        """Create processor using processor registry"""
+    ):
+        """
+        Create single processor from registry
+        
+        For internal use by DAGExecutor
+        """
         factory = processor_registry.get(processor_name)
         return factory(config_dict, pipeline)
+    
+    @staticmethod
+    def create_pipeline(config_path: str | Path, verbose: bool = False) -> DAGExecutor:
+        """
+        Create DAG pipeline from YAML config
+        
+        Supports:
+        - Single node (just L2)
+        - Multiple nodes (L1 → L2 → L3)
+        - Complex DAGs with dependencies
+        
+        Example config:
+            name: "my_pipeline"
+            nodes:
+              - id: "l2"
+                processor: "l2_chain"
+                inputs:
+                  mentions: {source: "$input", fields: "mentions"}
+                output: {key: "result"}
+                config: {...}
+        """
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        nodes = []
+        for node_cfg in config['nodes']:
+            inputs = {}
+            for name, data in node_cfg['inputs'].items():
+                inputs[name] = InputConfig(**data)
+            
+            node = PipeNode(
+                id=node_cfg['id'],
+                processor=node_cfg['processor'],
+                inputs=inputs,
+                output=OutputConfig(**node_cfg['output']),
+                requires=node_cfg.get('requires', []),
+                config=node_cfg['config'],
+                schema=node_cfg.get('schema')
+            )
+            nodes.append(node)
+        
+        pipeline = DAGPipeline(
+            name=config['name'],
+            description=config.get('description'),
+            nodes=nodes
+        )
+        
+        return DAGExecutor(pipeline, verbose=verbose)
+    
+    @staticmethod
+    def create_from_dict(config_dict: dict, verbose: bool = False) -> DAGExecutor:
+        """
+        Create pipeline from dict (for programmatic use)
+        
+        Same as create_pipeline but accepts dict instead of file path
+        """
+        nodes = []
+        for node_cfg in config_dict['nodes']:
+            inputs = {}
+            for name, data in node_cfg['inputs'].items():
+                inputs[name] = InputConfig(**data)
+            
+            node = PipeNode(
+                id=node_cfg['id'],
+                processor=node_cfg['processor'],
+                inputs=inputs,
+                output=OutputConfig(**node_cfg['output']),
+                requires=node_cfg.get('requires', []),
+                config=node_cfg['config'],
+                schema=node_cfg.get('schema')
+            )
+            nodes.append(node)
+        
+        pipeline = DAGPipeline(
+            name=config_dict['name'],
+            description=config_dict.get('description'),
+            nodes=nodes
+        )
+        
+        return DAGExecutor(pipeline, verbose=verbose)
