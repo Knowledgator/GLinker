@@ -226,7 +226,7 @@ with gr.Blocks(title="Entity Linking Pipeline Demo") as demo:
 
     output = gr.HighlightedText(label="Linked Entities")
 
-    # АККОРДЕОНЫ
+    # ACCORDIONS
     with gr.Accordion("🎯 L0: Final Aggregation & Statistics", open=True):
         l0_output = gr.Markdown()
 
