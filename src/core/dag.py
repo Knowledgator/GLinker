@@ -696,13 +696,119 @@ class DAGExecutor:
     def count_entities(self) -> Dict[str, Dict[str, int]]:
         """Count entities in all database layers"""
         results = {}
-        
+
         for node_id, processor in self.processors.items():
             if hasattr(processor, 'component') and hasattr(processor.component, 'count_entities'):
                 counts = processor.component.count_entities()
                 results[node_id] = counts
-        
+
         return results
+
+    def precompute_embeddings(
+        self,
+        target_layers: List[str] = None,
+        batch_size: int = 32
+    ) -> Dict[str, int]:
+        """
+        Precompute embeddings for all entities using L3 model and L2 schema.
+
+        Uses:
+        - L3 processor's model for encoding
+        - L2 processor's schema for label formatting
+
+        Args:
+            target_layers: Layer types to update (e.g., ['dict', 'postgres'])
+            batch_size: Batch size for encoding
+
+        Returns:
+            Dict with count of updated entities per layer
+        """
+        # Find L2 and L3 processors
+        l2_processor = None
+        l3_processor = None
+        l2_node = None
+        l3_node = None
+
+        for node_id, processor in self.processors.items():
+            node = self.nodes_map[node_id]
+
+            # Check for L2 (has component with precompute_embeddings)
+            if hasattr(processor, 'component') and hasattr(processor.component, 'precompute_embeddings'):
+                l2_processor = processor
+                l2_node = node
+
+            # Check for L3 (has component with encode_labels)
+            if hasattr(processor, 'component') and hasattr(processor.component, 'encode_labels'):
+                l3_processor = processor
+                l3_node = node
+
+        if not l2_processor:
+            raise ValueError("No L2 processor found with precompute_embeddings support")
+
+        if not l3_processor:
+            raise ValueError("No L3 processor found with encode_labels support")
+
+        # Check if L3 model supports precomputed embeddings
+        if not l3_processor.component.supports_precomputed_embeddings:
+            raise ValueError(
+                f"L3 model '{l3_processor.config.model_name}' doesn't support label precomputation. "
+                "Only BiEncoder models support this feature."
+            )
+
+        # Get schema from L2 node (or L3 as fallback)
+        template = '{label}'
+        if l2_node and l2_node.schema:
+            template = l2_node.schema.get('template', '{label}')
+        elif l3_node and l3_node.schema:
+            template = l3_node.schema.get('template', '{label}')
+
+        # Apply schema to L2 processor
+        if l2_node and l2_node.schema:
+            l2_processor.schema = l2_node.schema
+
+        model_id = l3_processor.config.model_name
+
+        if self.verbose:
+            logger.info(f"\nPrecomputing embeddings:")
+            logger.info(f"  Model: {model_id}")
+            logger.info(f"  Template: {template}")
+            logger.info(f"  Target layers: {target_layers or 'all'}")
+
+        # Create encoder function using L3 component
+        def encoder_fn(labels: List[str]):
+            return l3_processor.component.encode_labels(labels, batch_size=batch_size)
+
+        # Run precompute through L2 component
+        results = l2_processor.component.precompute_embeddings(
+            encoder_fn=encoder_fn,
+            template=template,
+            model_id=model_id,
+            target_layers=target_layers,
+            batch_size=batch_size
+        )
+
+        if self.verbose:
+            logger.info(f"\nPrecompute completed:")
+            for layer, count in results.items():
+                logger.info(f"  {layer}: {count} entities")
+
+        return results
+
+    def setup_l3_cache_writeback(self):
+        """Setup L3 processor to write back embeddings to L2"""
+        l2_processor = None
+        l3_processor = None
+
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'precompute_embeddings'):
+                l2_processor = processor
+            if hasattr(processor, '_l2_processor'):
+                l3_processor = processor
+
+        if l2_processor and l3_processor:
+            l3_processor._l2_processor = l2_processor
+            if self.verbose:
+                logger.info("L3 cache write-back enabled")
     
     def execute(self, pipeline_input: Any) -> PipeContext:
         """Execute full pipeline"""

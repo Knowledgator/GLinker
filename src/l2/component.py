@@ -65,17 +65,37 @@ class DatabaseLayer(ABC):
     def clear(self):
         """Clear all data in layer"""
         pass
-    
+
     def count(self) -> int:
         """Count entities in layer"""
         return 0
-    
+
+    def get_all_entities(self) -> List[DatabaseRecord]:
+        """Get all entities from layer (for precompute)"""
+        return []
+
+    def update_embeddings(
+        self,
+        entity_ids: List[str],
+        embeddings: List[List[float]],
+        model_id: str
+    ) -> int:
+        """Update embeddings for entities"""
+        return 0
+
     def map_to_record(self, raw_data: Dict[str, Any]) -> DatabaseRecord:
         """Map raw data to DatabaseRecord using field_mapping"""
         mapped = {}
         for standard_field, db_field in self.field_mapping.items():
             if db_field in raw_data:
                 mapped[standard_field] = raw_data[db_field]
+
+        # Handle embedding fields directly (not in field_mapping)
+        if 'embedding' in raw_data:
+            mapped['embedding'] = raw_data['embedding']
+        if 'embedding_model_id' in raw_data:
+            mapped['embedding_model_id'] = raw_data['embedding_model_id']
+
         mapped['source'] = self.config.type
         return DatabaseRecord(**mapped)
 
@@ -192,7 +212,26 @@ class DictLayer(DatabaseLayer):
     def count(self) -> int:
         """Count entities"""
         return len(self._storage)
-    
+
+    def get_all_entities(self) -> List[DatabaseRecord]:
+        """Get all entities from storage"""
+        return list(self._storage.values())
+
+    def update_embeddings(
+        self,
+        entity_ids: List[str],
+        embeddings: List[List[float]],
+        model_id: str
+    ) -> int:
+        """Update embeddings for entities"""
+        count = 0
+        for eid, emb in zip(entity_ids, embeddings):
+            if eid in self._storage:
+                self._storage[eid].embedding = emb
+                self._storage[eid].embedding_model_id = model_id
+                count += 1
+        return count
+
     def is_available(self) -> bool:
         """Dict layer is always available"""
         return True
@@ -298,7 +337,79 @@ class RedisLayer(DatabaseLayer):
     def count(self) -> int:
         """Count entity keys"""
         return sum(1 for _ in self.client.scan_iter(match="entity:*"))
-    
+
+    def get_all_entities(self) -> List[DatabaseRecord]:
+        """Get all entities from Redis (scans all entity:* keys)"""
+        entities = []
+        seen_ids = set()
+
+        for key in self.client.scan_iter(match="entity:*"):
+            try:
+                data = self.client.get(key)
+                if data:
+                    if isinstance(data, bytes):
+                        data = data.decode('utf-8')
+                    record_data = json.loads(data)
+
+                    if isinstance(record_data, dict):
+                        if record_data.get('entity_id') not in seen_ids:
+                            record_data['source'] = 'redis'
+                            entities.append(DatabaseRecord(**record_data))
+                            seen_ids.add(record_data.get('entity_id'))
+                    elif isinstance(record_data, list):
+                        for r in record_data:
+                            if r.get('entity_id') not in seen_ids:
+                                r['source'] = 'redis'
+                                entities.append(DatabaseRecord(**r))
+                                seen_ids.add(r.get('entity_id'))
+            except Exception as e:
+                continue
+
+        return entities
+
+    def update_embeddings(
+        self,
+        entity_ids: List[str],
+        embeddings: List[List[float]],
+        model_id: str
+    ) -> int:
+        """Update embeddings in Redis entities"""
+        count = 0
+        id_to_embedding = dict(zip(entity_ids, embeddings))
+
+        for key in self.client.scan_iter(match="entity:*"):
+            try:
+                data = self.client.get(key)
+                if not data:
+                    continue
+
+                if isinstance(data, bytes):
+                    data = data.decode('utf-8')
+
+                record_data = json.loads(data)
+                updated = False
+
+                if isinstance(record_data, dict):
+                    if record_data.get('entity_id') in id_to_embedding:
+                        record_data['embedding'] = id_to_embedding[record_data['entity_id']]
+                        record_data['embedding_model_id'] = model_id
+                        updated = True
+                elif isinstance(record_data, list):
+                    for r in record_data:
+                        if r.get('entity_id') in id_to_embedding:
+                            r['embedding'] = id_to_embedding[r['entity_id']]
+                            r['embedding_model_id'] = model_id
+                            updated = True
+
+                if updated:
+                    self.client.setex(key, self.ttl, json.dumps(record_data))
+                    count += 1
+
+            except Exception as e:
+                continue
+
+        return count
+
     def is_available(self) -> bool:
         try:
             self.client.ping()
@@ -451,7 +562,71 @@ class ElasticsearchLayer(DatabaseLayer):
             return result['count']
         except:
             return 0
-    
+
+    def get_all_entities(self) -> List[DatabaseRecord]:
+        """Get all entities from Elasticsearch using scroll"""
+        entities = []
+
+        try:
+            # Use scroll API for large datasets
+            response = self.client.search(
+                index=self.index_name,
+                body={"query": {"match_all": {}}, "size": 1000},
+                scroll='2m'
+            )
+
+            scroll_id = response['_scroll_id']
+            hits = response['hits']['hits']
+
+            while hits:
+                entities.extend(self._process_hits(hits))
+
+                response = self.client.scroll(scroll_id=scroll_id, scroll='2m')
+                scroll_id = response['_scroll_id']
+                hits = response['hits']['hits']
+
+            # Clear scroll
+            self.client.clear_scroll(scroll_id=scroll_id)
+
+        except Exception as e:
+            print(f"[ERROR ES] get_all_entities error: {e}")
+
+        return entities
+
+    def update_embeddings(
+        self,
+        entity_ids: List[str],
+        embeddings: List[List[float]],
+        model_id: str
+    ) -> int:
+        """Update embeddings in Elasticsearch"""
+        try:
+            actions = []
+            for eid, emb in zip(entity_ids, embeddings):
+                actions.append({
+                    "_op_type": "update",
+                    "_index": self.index_name,
+                    "_id": eid,
+                    "doc": {
+                        "embedding": emb,
+                        "embedding_model_id": model_id
+                    }
+                })
+
+            success, failed = es_bulk(
+                self.client,
+                actions,
+                raise_on_error=False,
+                chunk_size=500
+            )
+
+            self.client.indices.refresh(index=self.index_name)
+            return success
+
+        except Exception as e:
+            print(f"[ERROR ES] update_embeddings error: {e}")
+            return 0
+
     def is_available(self) -> bool:
         try:
             return self.client.ping()
@@ -641,7 +816,85 @@ class PostgresLayer(DatabaseLayer):
             return 0
         finally:
             cursor.close()
-    
+
+    def get_all_entities(self) -> List[DatabaseRecord]:
+        """Get all entities from PostgreSQL"""
+        entities = []
+
+        try:
+            cursor = self.conn.cursor(cursor_factory=RealDictCursor)
+            sql = """
+                SELECT
+                    e.entity_id,
+                    e.label,
+                    e.description,
+                    e.entity_type,
+                    e.popularity,
+                    e.embedding,
+                    e.embedding_model_id,
+                    COALESCE(array_agg(a.alias) FILTER (WHERE a.alias IS NOT NULL), ARRAY[]::text[]) as aliases
+                FROM entities e
+                LEFT JOIN aliases a ON e.entity_id = a.entity_id
+                GROUP BY e.entity_id, e.label, e.description, e.entity_type, e.popularity, e.embedding, e.embedding_model_id
+            """
+            cursor.execute(sql)
+
+            for row in cursor.fetchall():
+                row_dict = dict(row)
+                row_dict['source'] = 'postgres'
+
+                # Deserialize embedding from bytes if needed
+                if row_dict.get('embedding'):
+                    import pickle
+                    if isinstance(row_dict['embedding'], (bytes, memoryview)):
+                        row_dict['embedding'] = pickle.loads(bytes(row_dict['embedding']))
+
+                record = self.map_to_record(row_dict)
+                entities.append(record)
+
+            cursor.close()
+
+        except Exception as e:
+            print(f"[ERROR Postgres] get_all_entities error: {e}")
+
+        return entities
+
+    def update_embeddings(
+        self,
+        entity_ids: List[str],
+        embeddings: List[List[float]],
+        model_id: str
+    ) -> int:
+        """Update embeddings in PostgreSQL"""
+        cursor = self.conn.cursor()
+
+        try:
+            import pickle
+
+            # Prepare batch data
+            batch_data = []
+            for eid, emb in zip(entity_ids, embeddings):
+                emb_bytes = pickle.dumps(emb)
+                batch_data.append((emb_bytes, model_id, eid))
+
+            # Batch update
+            execute_batch(
+                cursor,
+                "UPDATE entities SET embedding = %s, embedding_model_id = %s WHERE entity_id = %s",
+                batch_data,
+                page_size=500
+            )
+
+            self.conn.commit()
+            return len(batch_data)
+
+        except Exception as e:
+            self.conn.rollback()
+            print(f"[ERROR Postgres] update_embeddings error: {e}")
+            return 0
+        finally:
+            cursor.close()
+
     def is_available(self) -> bool:
         try:
             cursor = self.conn.cursor()
@@ -833,3 +1086,86 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
         for layer in self.layers:
             counts[layer.config.type] = layer.count()
         return counts
+
+    def precompute_embeddings(
+        self,
+        encoder_fn,
+        template: str,
+        model_id: str,
+        target_layers: List[str] = None,
+        batch_size: int = 32
+    ) -> Dict[str, int]:
+        """
+        Precompute embeddings for all entities in specified layers.
+
+        Args:
+            encoder_fn: Callable that takes List[str] and returns embeddings tensor
+            template: Template string for formatting labels (e.g., "{label}: {description}")
+            model_id: Model identifier to store with embeddings
+            target_layers: Layer types to update (None = all)
+            batch_size: Batch size for encoding
+
+        Returns:
+            Dict with count of updated entities per layer
+        """
+        from tqdm import tqdm
+
+        results = {}
+
+        for layer in self.layers:
+            if target_layers and layer.config.type not in target_layers:
+                continue
+
+            if not layer.is_available():
+                print(f"[WARN] {layer.config.type} unavailable, skipping")
+                continue
+
+            print(f"\nPrecomputing embeddings for {layer.config.type}...")
+
+            # Get all entities
+            entities = layer.get_all_entities()
+            if not entities:
+                print(f"  No entities found in {layer.config.type}")
+                continue
+
+            print(f"  Found {len(entities)} entities")
+
+            # Format labels using template
+            labels = []
+            entity_ids = []
+            for entity in entities:
+                try:
+                    formatted = template.format(**entity.dict())
+                    labels.append(formatted)
+                    entity_ids.append(entity.entity_id)
+                except KeyError as e:
+                    print(f"  [WARN] Template error for {entity.entity_id}: {e}")
+                    continue
+
+            # Encode in batches
+            all_embeddings = []
+            for i in tqdm(range(0, len(labels), batch_size), desc="Encoding"):
+                batch_labels = labels[i:i + batch_size]
+                batch_embeddings = encoder_fn(batch_labels)
+
+                # Convert to list if tensor
+                if hasattr(batch_embeddings, 'tolist'):
+                    batch_embeddings = batch_embeddings.tolist()
+                elif hasattr(batch_embeddings, 'cpu'):
+                    batch_embeddings = batch_embeddings.cpu().numpy().tolist()
+
+                all_embeddings.extend(batch_embeddings)
+
+            # Update layer
+            updated = layer.update_embeddings(entity_ids, all_embeddings, model_id)
+            results[layer.config.type] = updated
+            print(f"  Updated {updated} entities with embeddings")
+
+        return results
+
+    def get_layer(self, layer_type: str) -> DatabaseLayer:
+        """Get layer by type"""
+        for layer in self.layers:
+            if layer.config.type == layer_type:
+                return layer
+        return None

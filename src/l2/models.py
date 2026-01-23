@@ -6,7 +6,7 @@ from src.core.base import BaseConfig, BaseInput, BaseOutput
 class DatabaseRecord(BaseModel):
     """
     Unified format for all database layers
-    
+
     All layers (Dict, Redis, Elasticsearch, Postgres) use this format.
     """
     entity_id: str = Field(..., description="Unique entity identifier")
@@ -20,6 +20,16 @@ class DatabaseRecord(BaseModel):
         description="Database-specific metadata"
     )
     source: str = Field(default="", description="Source layer: dict|redis|elasticsearch|postgres")
+
+    # Embedding fields for precomputed label embeddings
+    embedding: Optional[List[float]] = Field(
+        default=None,
+        description="Precomputed label embedding vector"
+    )
+    embedding_model_id: Optional[str] = Field(
+        default=None,
+        description="Model ID used to compute the embedding"
+    )
 
 
 class FuzzyConfig(BaseConfig):
@@ -58,11 +68,24 @@ class LayerConfig(BaseConfig):
     fuzzy: Optional[FuzzyConfig] = Field(default_factory=FuzzyConfig, description="Fuzzy search config")
 
 
+class EmbeddingConfig(BaseModel):
+    """Configuration for precomputed label embeddings"""
+    enabled: bool = Field(False, description="Enable embedding support")
+    model_name: Optional[str] = Field(None, description="Model name for encoding labels")
+    dim: int = Field(768, description="Embedding dimension")
+    precompute_on_load: bool = Field(False, description="Compute embeddings during load_bulk")
+    batch_size: int = Field(32, description="Batch size for encoding")
+
+
 class L2Config(BaseConfig):
     """L2 processor configuration"""
     layers: List[LayerConfig] = Field(..., description="Database layers in priority order")
     max_candidates: int = Field(30, description="Maximum candidates per mention")
     min_popularity: int = Field(0, description="Minimum popularity threshold")
+    embeddings: Optional[EmbeddingConfig] = Field(
+        default=None,
+        description="Embedding configuration for precomputed labels"
+    )
 
 
 class L2Input(BaseInput):

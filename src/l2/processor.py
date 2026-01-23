@@ -7,7 +7,7 @@ from .component import DatabaseChainComponent
 
 class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
     """Multi-layer database search processor"""
-    
+
     def __init__(
         self,
         config: L2Config,
@@ -15,6 +15,40 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
         pipeline: list[tuple[str, dict[str, Any]]] = None
     ):
         super().__init__(config, component, pipeline)
+        self.schema = {}  # Will be set by DAG executor from node config
+
+    def format_label(self, record: DatabaseRecord) -> str:
+        """Format label using schema template"""
+        template = self.schema.get('template', '{label}')
+        try:
+            return template.format(**record.model_dump())
+        except KeyError:
+            return record.label
+
+    def precompute_embeddings(
+        self,
+        encoder_fn,
+        target_layers: List[str] = None,
+        batch_size: int = 32
+    ):
+        """
+        Precompute embeddings for entities using schema template.
+
+        Args:
+            encoder_fn: Function that takes List[str] and returns embeddings
+            target_layers: Layer types to update
+            batch_size: Batch size for encoding
+        """
+        template = self.schema.get('template', '{label}')
+        model_id = self.config.embeddings.model_name if self.config.embeddings else 'unknown'
+
+        return self.component.precompute_embeddings(
+            encoder_fn=encoder_fn,
+            template=template,
+            model_id=model_id,
+            target_layers=target_layers,
+            batch_size=batch_size
+        )
     
     def _default_pipeline(self) -> list[tuple[str, dict[str, Any]]]:
         return [

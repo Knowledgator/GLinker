@@ -11,6 +11,15 @@ class L0Config(BaseConfig):
     min_confidence: float = Field(0.0, description="Minimum confidence threshold for linked entities")
     include_unlinked: bool = Field(True, description="Include mentions without linked entities")
     return_all_candidates: bool = Field(False, description="Return all candidates or only top match")
+    strict_matching: bool = Field(
+        True,
+        description="If True, only include entities that match L1 mentions. "
+                    "If False, also include L3 entities found outside L1 mentions."
+    )
+    position_tolerance: int = Field(
+        2,
+        description="Maximum character difference for fuzzy position matching between L1 and L3 entities"
+    )
 
 
 class L0Input(BaseInput):

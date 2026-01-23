@@ -74,11 +74,13 @@ class L0Component(BaseComponent[L0Config]):
            - Find corresponding candidates from L2
            - Check if it was linked in L3
            - Create L0Entity
+        3. If strict_matching=False, also include L3 entities outside L1 mentions
         """
         # Build L3 index by position
         l3_by_position = self._build_l3_index(l3_links)
 
         results = []
+        used_l3_positions = set()  # Track which L3 entities were matched to L1 mentions
 
         for mention_idx, l1_mention in enumerate(l1_mentions):
             # Get candidates for this mention (L2 returns flat list, need to group)
@@ -88,9 +90,13 @@ class L0Component(BaseComponent[L0Config]):
             )
 
             # Check if this mention was linked in L3
-            linked_entity = self._find_linked_entity(
-                l1_mention, l3_by_position, mention_candidates, template
+            linked_entity, l3_pos = self._find_linked_entity_with_position(
+                l1_mention, l3_by_position, mention_candidates, template,
+                tolerance=self.config.position_tolerance
             )
+
+            if l3_pos:
+                used_l3_positions.add(l3_pos)
 
             # Determine pipeline stage
             pipeline_stage = self._determine_stage(mention_candidates, linked_entity)
@@ -110,6 +116,39 @@ class L0Component(BaseComponent[L0Config]):
             )
 
             results.append(l0_entity)
+
+        # If loose mode, include L3 entities that weren't matched to L1 mentions
+        if not self.config.strict_matching:
+            for (l3_start, l3_end), l3_entity in l3_by_position.items():
+                if (l3_start, l3_end) not in used_l3_positions:
+                    # This L3 entity was not matched to any L1 mention
+                    # Find candidate by label
+                    matched_candidate = self._match_candidate_by_label(
+                        l3_entity.label, l2_candidates, template
+                    )
+
+                    linked = LinkedEntity(
+                        entity_id=matched_candidate.entity_id if matched_candidate else "unknown",
+                        label=matched_candidate.label if matched_candidate else l3_entity.label,
+                        confidence=l3_entity.score,
+                        start=l3_entity.start,
+                        end=l3_entity.end,
+                        matched_text=l3_entity.text
+                    )
+
+                    l0_entity = L0Entity(
+                        mention_text=l3_entity.text,
+                        mention_start=l3_entity.start,
+                        mention_end=l3_entity.end,
+                        left_context="",  # No context from L1
+                        right_context="",
+                        candidates=[matched_candidate] if matched_candidate else [],
+                        num_candidates=1 if matched_candidate else 0,
+                        linked_entity=linked,
+                        is_linked=True,
+                        pipeline_stage="l3_only"  # Indicates L3 found it without L1
+                    )
+                    results.append(l0_entity)
 
         return results
 
@@ -166,18 +205,38 @@ class L0Component(BaseComponent[L0Config]):
         2. If found, match with candidates to get entity_id
         3. Return LinkedEntity with full information
         """
+        linked, _ = self._find_linked_entity_with_position(
+            l1_mention, l3_by_position, candidates, template
+        )
+        return linked
+
+    def _find_linked_entity_with_position(
+        self,
+        l1_mention: L1Entity,
+        l3_by_position: Dict[Tuple[int, int], L3Entity],
+        candidates: List[DatabaseRecord],
+        template: str = "{label}",
+        tolerance: int = 2
+    ) -> Tuple[Optional[LinkedEntity], Optional[Tuple[int, int]]]:
+        """
+        Find if this L1 mention was linked in L3, and return the matched position
+
+        Returns:
+            Tuple of (LinkedEntity or None, matched position tuple or None)
+        """
         # Try exact position match
         key = (l1_mention.start, l1_mention.end)
         l3_entity = l3_by_position.get(key)
+        matched_key = key if l3_entity else None
 
         if not l3_entity:
             # Try fuzzy position match (text might be slightly different)
-            l3_entity = self._fuzzy_position_match(
-                l1_mention.start, l1_mention.end, l3_by_position
+            l3_entity, matched_key = self._fuzzy_position_match_with_key(
+                l1_mention.start, l1_mention.end, l3_by_position, tolerance
             )
 
         if not l3_entity:
-            return None
+            return None, None
 
         # Find matching candidate by label using template
         matched_candidate = self._match_candidate_by_label(l3_entity.label, candidates, template)
@@ -191,7 +250,7 @@ class L0Component(BaseComponent[L0Config]):
                 start=l3_entity.start,
                 end=l3_entity.end,
                 matched_text=l3_entity.text
-            )
+            ), matched_key
 
         return LinkedEntity(
             entity_id=matched_candidate.entity_id,
@@ -200,7 +259,7 @@ class L0Component(BaseComponent[L0Config]):
             start=l3_entity.start,
             end=l3_entity.end,
             matched_text=l3_entity.text
-        )
+        ), matched_key
 
     def _fuzzy_position_match(
         self,
@@ -210,10 +269,21 @@ class L0Component(BaseComponent[L0Config]):
         tolerance: int = 2
     ) -> Optional[L3Entity]:
         """Find L3 entity with position close to given range"""
+        entity, _ = self._fuzzy_position_match_with_key(start, end, l3_by_position, tolerance)
+        return entity
+
+    def _fuzzy_position_match_with_key(
+        self,
+        start: int,
+        end: int,
+        l3_by_position: Dict[Tuple[int, int], L3Entity],
+        tolerance: int = 2
+    ) -> Tuple[Optional[L3Entity], Optional[Tuple[int, int]]]:
+        """Find L3 entity with position close to given range, return with its key"""
         for (l3_start, l3_end), entity in l3_by_position.items():
             if abs(l3_start - start) <= tolerance and abs(l3_end - end) <= tolerance:
-                return entity
-        return None
+                return entity, (l3_start, l3_end)
+        return None, None
 
     def _match_candidate_by_label(
         self,
@@ -327,6 +397,7 @@ class L0Component(BaseComponent[L0Config]):
         l1_only = 0
         l2_found = 0
         l3_linked = 0
+        l3_only = 0  # L3 entities found without L1 mentions (loose mode)
 
         for text_entities in entities:
             for entity in text_entities:
@@ -343,6 +414,8 @@ class L0Component(BaseComponent[L0Config]):
                     l2_found += 1
                 elif entity.pipeline_stage == "l3_linked":
                     l3_linked += 1
+                elif entity.pipeline_stage == "l3_only":
+                    l3_only += 1
 
         return {
             "total_mentions": total,
@@ -352,6 +425,7 @@ class L0Component(BaseComponent[L0Config]):
             "stages": {
                 "l1_only": l1_only,
                 "l2_found": l2_found,
-                "l3_linked": l3_linked
+                "l3_linked": l3_linked,
+                "l3_only": l3_only
             }
         }
