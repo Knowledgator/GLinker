@@ -16,7 +16,7 @@ class L3Config(BaseConfig):
 # TODO replace candidates with labels
 class L3Input(BaseInput):
     texts: List[str] = Field(...)
-    candidates: List[List[Any]] = Field(...)
+    labels: List[List[Any]] = Field(...)
 
 
 class L3Entity(BaseOutput):

@@ -1,7 +1,10 @@
 from typing import Dict, List, Set, Any, Optional, Literal, Union
 from collections import defaultdict, deque, OrderedDict
 from pydantic import BaseModel, Field
+from datetime import datetime
+from pathlib import Path
 import re
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -204,6 +207,115 @@ class PipeContext:
     def data(self) -> Dict[str, Any]:
         """For compatibility"""
         return dict(self._outputs)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Serialize context to dict
+        
+        Returns:
+            Dict with full context state
+        """
+        def serialize(value):
+            if hasattr(value, 'dict'):
+                return {'__type__': 'pydantic', 'data': value.dict()}
+            elif isinstance(value, list):
+                return [serialize(item) for item in value]
+            elif isinstance(value, dict):
+                return {k: serialize(v) for k, v in value.items()}
+            elif isinstance(value, OrderedDict):
+                return {'__type__': 'OrderedDict', 'data': list(value.items())}
+            elif isinstance(value, (str, int, float, bool, type(None))):
+                return value
+            else:
+                return {'__type__': 'object', 'repr': repr(value)}
+        
+        return {
+            'outputs': {k: serialize(v) for k, v in self._outputs.items()},
+            'execution_order': self._execution_order,
+            'pipeline_input': serialize(self._pipeline_input),
+            'metadata': self._metadata,
+            'saved_at': datetime.now().isoformat()
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PipeContext':
+        """
+        Deserialize context from dict
+        
+        Args:
+            data: Dict with saved state
+            
+        Returns:
+            Restored PipeContext
+        """
+        def deserialize(value):
+            if isinstance(value, dict):
+                if '__type__' in value:
+                    if value['__type__'] == 'OrderedDict':
+                        return OrderedDict(value['data'])
+                    elif value['__type__'] == 'pydantic':
+                        return value['data']
+                    elif value['__type__'] == 'object':
+                        return value['repr']
+                return {k: deserialize(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [deserialize(item) for item in value]
+            else:
+                return value
+        
+        pipeline_input = deserialize(data.get('pipeline_input'))
+        context = cls(pipeline_input)
+        
+        outputs_data = data.get('outputs', {})
+        for key, value in outputs_data.items():
+            context._outputs[key] = deserialize(value)
+        
+        context._execution_order = data.get('execution_order', [])
+        context._metadata = data.get('metadata', {})
+        
+        return context
+    
+    def to_json(self, filepath: str = None, indent: int = 2) -> str:
+        """
+        Serialize to JSON
+        
+        Args:
+            filepath: Path to save (optional)
+            indent: Indentation for formatting
+            
+        Returns:
+            JSON string
+        """
+        data = self.to_dict()
+        json_str = json.dumps(data, indent=indent, ensure_ascii=False)
+        
+        if filepath:
+            Path(filepath).write_text(json_str, encoding='utf-8')
+            logger.info(f"Context saved to {filepath}")
+        
+        return json_str
+    
+    @classmethod
+    def from_json(cls, json_data: str = None, filepath: str = None) -> 'PipeContext':
+        """
+        Load from JSON
+        
+        Args:
+            json_data: JSON string (optional)
+            filepath: Path to JSON file (optional)
+            
+        Returns:
+            Restored PipeContext
+        """
+        if filepath:
+            json_data = Path(filepath).read_text(encoding='utf-8')
+            logger.info(f"Context loaded from {filepath}")
+        
+        if not json_data:
+            raise ValueError("Either json_data or filepath must be provided")
+        
+        data = json.loads(json_data)
+        return cls.from_dict(data)
 
 
 # ============================================================================
@@ -532,6 +644,66 @@ class DAGExecutor:
         
         return levels
     
+    def load_entities(
+        self,
+        filepath: str,
+        target_layers: List[str] = None,
+        batch_size: int = 1000,
+        overwrite: bool = False
+    ) -> Dict[str, Dict[str, int]]:
+        """
+        Load entities into database layers
+        
+        Finds all L2 processors and loads entities into their database layers.
+        
+        Args:
+            filepath: path to entities.jsonl
+            target_layers: ['dict', 'redis', 'elasticsearch', 'postgres'] or None (all writable)
+            batch_size: batch size for bulk operations
+            overwrite: overwrite existing entities
+        
+        Returns:
+            {'l2_node_id': {'redis': 1500, 'elasticsearch': 1500}}
+        """
+        results = {}
+        
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'load_entities'):
+                if self.verbose:
+                    logger.info(f"\nLoading entities for node '{node_id}'")
+                
+                result = processor.component.load_entities(
+                    filepath=filepath,
+                    target_layers=target_layers,
+                    batch_size=batch_size,
+                    overwrite=overwrite
+                )
+                results[node_id] = result
+        
+        return results
+    
+    def clear_databases(self, layer_names: List[str] = None) -> Dict[str, bool]:
+        """Clear database layers in all L2 processors"""
+        results = {}
+        
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'clear_layers'):
+                processor.component.clear_layers(layer_names)
+                results[node_id] = True
+        
+        return results
+    
+    def count_entities(self) -> Dict[str, Dict[str, int]]:
+        """Count entities in all database layers"""
+        results = {}
+        
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'count_entities'):
+                counts = processor.component.count_entities()
+                results[node_id] = counts
+        
+        return results
+    
     def execute(self, pipeline_input: Any) -> PipeContext:
         """Execute full pipeline"""
         context = PipeContext(pipeline_input)
@@ -542,8 +714,6 @@ class DAGExecutor:
             logger.info(f"Total nodes: {len(self.nodes_map)}")
             logger.info(f"Execution levels: {len(execution_levels)}")
         
-        # TODO: add parallel execution with ThreadPoolExecutor
-        # for levels with multiple nodes, they can run in parallel
         for level_idx, level_nodes in enumerate(execution_levels):
             if self.verbose:
                 logger.info(f"\n{'='*60}")

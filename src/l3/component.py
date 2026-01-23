@@ -27,7 +27,8 @@ class L3Component(BaseComponent[L3Config]):
         """Predict entities using GLiNER"""
         if not labels:
             return []
-        
+        print(labels)
+        # labels = [label[:75] for label in labels]  # Truncate long labels
         entities = self.model.predict_entities(
             text,
             labels,

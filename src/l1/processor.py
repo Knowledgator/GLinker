@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List, Union
 from src.core.base import BaseProcessor
 from src.core.registry import processor_registry
 from .models import L1Config, L1Input, L1Output
@@ -24,16 +24,29 @@ class L1BatchProcessor(BaseProcessor[L1Config, L1Input, L1Output]):
             ("sort_by_position", {})
         ]
     
-    def __call__(self, input_data: L1Input) -> L1Output:
+    def __call__(
+        self, 
+        texts: List[str] = None,
+        input_data: L1Input = None
+    ) -> L1Output:
         """Process batch using spaCy's efficient pipe"""
+        
+        # Support both direct texts and L1Input
+        if texts is not None:
+            texts_to_process = texts
+        elif input_data is not None:
+            texts_to_process = input_data.texts
+        else:
+            raise ValueError("Either 'texts' or 'input_data' must be provided")
+        
         results = []
         
         for doc, original_text in zip(
             self.component.nlp.pipe(
-                input_data.texts, 
+                texts_to_process, 
                 batch_size=self.config.batch_size
             ),
-            input_data.texts
+            texts_to_process
         ):
             entities = self._extract_from_doc(doc, original_text)
             

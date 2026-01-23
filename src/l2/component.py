@@ -1,16 +1,19 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Set
 import redis
 import json
 from elasticsearch import Elasticsearch
+from elasticsearch.helpers import bulk as es_bulk
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, execute_batch
 
 from src.core.base import BaseComponent
 from .models import L2Config, LayerConfig, FuzzyConfig, DatabaseRecord
 
 
 class DatabaseLayer(ABC):
+    """Base class for all database layers"""
+    
     def __init__(self, config: LayerConfig):
         self.config = config
         self.priority = config.priority
@@ -23,31 +26,52 @@ class DatabaseLayer(ABC):
     
     @abstractmethod
     def _setup(self):
+        """Initialize layer resources"""
         pass
     
     def normalize_query(self, query: str) -> str:
+        """Normalize query for search"""
         return query.lower().strip()
     
     @abstractmethod
     def search(self, query: str) -> List[DatabaseRecord]:
+        """Exact search"""
         pass
     
     @abstractmethod
     def search_fuzzy(self, query: str) -> List[DatabaseRecord]:
+        """Fuzzy search"""
         pass
     
     def supports_fuzzy(self) -> bool:
+        """Check if layer supports fuzzy search"""
         return self.fuzzy_config is not None
     
     @abstractmethod
     def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
+        """Write records to cache"""
         pass
     
     @abstractmethod
     def is_available(self) -> bool:
+        """Check if layer is available"""
         pass
     
+    @abstractmethod
+    def load_bulk(self, entities: List[DatabaseRecord], overwrite: bool = False, batch_size: int = 1000) -> int:
+        """Bulk load entities"""
+        pass
+    
+    def clear(self):
+        """Clear all data in layer"""
+        pass
+    
+    def count(self) -> int:
+        """Count entities in layer"""
+        return 0
+    
     def map_to_record(self, raw_data: Dict[str, Any]) -> DatabaseRecord:
+        """Map raw data to DatabaseRecord using field_mapping"""
         mapped = {}
         for standard_field, db_field in self.field_mapping.items():
             if db_field in raw_data:
@@ -56,7 +80,127 @@ class DatabaseLayer(ABC):
         return DatabaseRecord(**mapped)
 
 
+class DictLayer(DatabaseLayer):
+    """Simple dict-based storage for small entity sets (<5000)"""
+    
+    def _setup(self):
+        self._storage: Dict[str, DatabaseRecord] = {}
+        self._label_index: Dict[str, str] = {}
+        self._alias_index: Dict[str, Set[str]] = {}
+    
+    def search(self, query: str) -> List[DatabaseRecord]:
+        """Fast O(1) exact search using indexes"""
+        query_key = self.normalize_query(query)
+        results = []
+        seen = set()
+        
+        # Label lookup
+        if query_key in self._label_index:
+            eid = self._label_index[query_key]
+            results.append(self._storage[eid])
+            seen.add(eid)
+        
+        # Alias lookup
+        if query_key in self._alias_index:
+            for eid in self._alias_index[query_key]:
+                if eid not in seen:
+                    results.append(self._storage[eid])
+                    seen.add(eid)
+        
+        return results
+    
+    def search_fuzzy(self, query: str) -> List[DatabaseRecord]:
+        """Simple fuzzy search for small datasets (O(n) is fine for <5000 entities)"""
+        try:
+            from rapidfuzz import fuzz
+        except ImportError:
+            print("[WARN DictLayer] rapidfuzz not installed, fuzzy search disabled")
+            return []
+        
+        query_key = self.normalize_query(query)
+        results = []
+        
+        # Check prefix requirement
+        if self.fuzzy_config.prefix_length > 0:
+            prefix = query_key[:self.fuzzy_config.prefix_length]
+        
+        for entity in self._storage.values():
+            # Check label
+            label_key = entity.label.lower()
+            
+            if self.fuzzy_config.prefix_length > 0:
+                if not label_key.startswith(prefix):
+                    continue
+            
+            similarity = fuzz.ratio(query_key, label_key) / 100.0
+            if similarity >= self.fuzzy_config.min_similarity:
+                results.append((entity, similarity))
+                continue
+            
+            # Check aliases
+            for alias in entity.aliases:
+                alias_key = alias.lower()
+                if self.fuzzy_config.prefix_length > 0:
+                    if not alias_key.startswith(prefix):
+                        continue
+                
+                sim = fuzz.ratio(query_key, alias_key) / 100.0
+                if sim >= self.fuzzy_config.min_similarity:
+                    results.append((entity, sim))
+                    break
+        
+        # Sort by similarity
+        results.sort(key=lambda x: x[1], reverse=True)
+        return [r[0] for r in results]
+    
+    def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
+        """Write is same as load_bulk for dict layer"""
+        self.load_bulk(records, overwrite=True)
+    
+    def load_bulk(self, entities: List[DatabaseRecord], overwrite: bool = False, batch_size: int = 1000) -> int:
+        """Bulk load entities with indexing"""
+        count = 0
+        for entity in entities:
+            entity_id = entity.entity_id
+            
+            if not overwrite and entity_id in self._storage:
+                continue
+            
+            # Store entity
+            self._storage[entity_id] = entity
+            
+            # Index by label
+            label_key = entity.label.lower()
+            self._label_index[label_key] = entity_id
+            
+            # Index by aliases
+            for alias in entity.aliases:
+                alias_key = alias.lower()
+                if alias_key not in self._alias_index:
+                    self._alias_index[alias_key] = set()
+                self._alias_index[alias_key].add(entity_id)
+            
+            count += 1
+        return count
+    
+    def clear(self):
+        """Clear all data"""
+        self._storage.clear()
+        self._label_index.clear()
+        self._alias_index.clear()
+    
+    def count(self) -> int:
+        """Count entities"""
+        return len(self._storage)
+    
+    def is_available(self) -> bool:
+        """Dict layer is always available"""
+        return True
+
+
 class RedisLayer(DatabaseLayer):
+    """Redis cache layer"""
+    
     def _setup(self):
         self.client = redis.Redis(
             host=self.config.config.get('host', 'localhost'),
@@ -113,6 +257,48 @@ class RedisLayer(DatabaseLayer):
         except Exception as e:
             print(f"[ERROR Redis] Write error: {e}")
     
+    def load_bulk(self, entities: List[DatabaseRecord], overwrite: bool = False, batch_size: int = 1000) -> int:
+        """Bulk load to Redis"""
+        count = 0
+        pipe = self.client.pipeline()
+        
+        for entity in entities:
+            # Prepare data
+            entity_data = entity.dict()
+            data_json = json.dumps(entity_data)
+            
+            # Store by label
+            label_key = f"entity:{entity.label.lower()}"
+            if overwrite or not self.client.exists(label_key):
+                pipe.setex(label_key, self.ttl, data_json)
+                count += 1
+            
+            # Store by aliases
+            for alias in entity.aliases:
+                alias_key = f"entity:{alias.lower()}"
+                if overwrite or not self.client.exists(alias_key):
+                    pipe.setex(alias_key, self.ttl, data_json)
+            
+            # Execute in batches
+            if len(pipe) >= batch_size:
+                pipe.execute()
+                pipe = self.client.pipeline()
+        
+        # Execute remaining
+        if len(pipe) > 0:
+            pipe.execute()
+        
+        return count
+    
+    def clear(self):
+        """Clear all entity keys"""
+        for key in self.client.scan_iter(match="entity:*"):
+            self.client.delete(key)
+    
+    def count(self) -> int:
+        """Count entity keys"""
+        return sum(1 for _ in self.client.scan_iter(match="entity:*"))
+    
     def is_available(self) -> bool:
         try:
             self.client.ping()
@@ -122,6 +308,8 @@ class RedisLayer(DatabaseLayer):
 
 
 class ElasticsearchLayer(DatabaseLayer):
+    """Elasticsearch full-text search layer"""
+    
     def _setup(self):
         self.client = Elasticsearch(
             self.config.config['hosts'],
@@ -187,27 +375,82 @@ class ElasticsearchLayer(DatabaseLayer):
             return
         
         try:
-            bulk_body = []
+            actions = []
             for record in records:
-                bulk_body.append({"index": {"_index": self.index_name, "_id": record.entity_id}})
-                bulk_body.append(self._map_from_record(record))
+                doc = self._map_from_record(record)
+                actions.append({
+                    "_index": self.index_name,
+                    "_id": record.entity_id,
+                    "_source": doc
+                })
             
-            if bulk_body:
-                self.client.bulk(body=bulk_body, refresh=True)
+            if actions:
+                es_bulk(self.client, actions)
+                self.client.indices.refresh(index=self.index_name)
         except Exception as e:
             print(f"[ERROR ES] Write error: {e}")
     
+    def load_bulk(self, entities: List[DatabaseRecord], overwrite: bool = False, batch_size: int = 1000) -> int:
+        """Bulk load to Elasticsearch"""
+        actions = []
+        for entity in entities:
+            doc = self._map_from_record(entity)
+            
+            action = {
+                '_index': self.index_name,
+                '_id': entity.entity_id,
+                '_source': doc
+            }
+            
+            if overwrite:
+                action['_op_type'] = 'index'
+            else:
+                action['_op_type'] = 'create'
+            
+            actions.append(action)
+        
+        success, failed = es_bulk(
+            self.client,
+            actions,
+            raise_on_error=False,
+            chunk_size=batch_size
+        )
+        
+        self.client.indices.refresh(index=self.index_name)
+        return success
+    
     def _map_from_record(self, record: DatabaseRecord) -> dict:
+        """Map DatabaseRecord -> ES document using field_mapping"""
         reverse_mapping = {v: k for k, v in self.field_mapping.items()}
+        
         doc = {}
         for standard_field, value in record.dict().items():
             if standard_field == 'source':
                 continue
-            if standard_field in reverse_mapping:
-                doc[reverse_mapping[standard_field]] = value
-            else:
-                doc[standard_field] = value
+            
+            es_field = reverse_mapping.get(standard_field, standard_field)
+            doc[es_field] = value
+        
         return doc
+    
+    def clear(self):
+        """Delete all documents in index"""
+        try:
+            self.client.delete_by_query(
+                index=self.index_name,
+                body={"query": {"match_all": {}}}
+            )
+            self.client.indices.refresh(index=self.index_name)
+        except Exception as e:
+            print(f"[ERROR ES] Clear error: {e}")
+    
+    def count(self) -> int:
+        """Count documents in index"""
+        try:
+            result = self.client.count(index=self.index_name)
+            return result['count']
+        except:
+            return 0
     
     def is_available(self) -> bool:
         try:
@@ -217,6 +460,8 @@ class ElasticsearchLayer(DatabaseLayer):
 
 
 class PostgresLayer(DatabaseLayer):
+    """PostgreSQL database layer"""
+    
     def _setup(self):
         self.conn = psycopg2.connect(
             host=self.config.config['host'],
@@ -310,6 +555,93 @@ class PostgresLayer(DatabaseLayer):
     def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
         pass
     
+    def load_bulk(self, entities: List[DatabaseRecord], overwrite: bool = False, batch_size: int = 1000) -> int:
+        """Bulk load to Postgres"""
+        cursor = self.conn.cursor()
+        
+        try:
+            # Prepare entity data
+            entity_values = [
+                (e.entity_id, e.label, e.description, e.entity_type, e.popularity)
+                for e in entities
+            ]
+            
+            # Insert entities
+            if overwrite:
+                entity_query = """
+                    INSERT INTO entities (entity_id, label, description, entity_type, popularity)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (entity_id) DO UPDATE SET
+                        label = EXCLUDED.label,
+                        description = EXCLUDED.description,
+                        entity_type = EXCLUDED.entity_type,
+                        popularity = EXCLUDED.popularity
+                """
+            else:
+                entity_query = """
+                    INSERT INTO entities (entity_id, label, description, entity_type, popularity)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (entity_id) DO NOTHING
+                """
+            
+            execute_batch(cursor, entity_query, entity_values, page_size=batch_size)
+            
+            # Prepare alias data
+            alias_values = []
+            for entity in entities:
+                for alias in entity.aliases:
+                    alias_values.append((entity.entity_id, alias))
+            
+            # Delete old aliases if overwrite
+            if overwrite and alias_values:
+                entity_ids = [e.entity_id for e in entities]
+                cursor.execute(
+                    "DELETE FROM aliases WHERE entity_id = ANY(%s)",
+                    (entity_ids,)
+                )
+            
+            # Insert aliases
+            if alias_values:
+                execute_batch(
+                    cursor,
+                    "INSERT INTO aliases (entity_id, alias) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    alias_values,
+                    page_size=batch_size
+                )
+            
+            self.conn.commit()
+            return len(entities)
+        
+        except Exception as e:
+            self.conn.rollback()
+            print(f"[ERROR Postgres] Load bulk failed: {e}")
+            raise
+        finally:
+            cursor.close()
+    
+    def clear(self):
+        """Clear all data"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("TRUNCATE entities, aliases CASCADE")
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"[ERROR Postgres] Clear error: {e}")
+        finally:
+            cursor.close()
+    
+    def count(self) -> int:
+        """Count entities"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM entities")
+            return cursor.fetchone()[0]
+        except:
+            return 0
+        finally:
+            cursor.close()
+    
     def is_available(self) -> bool:
         try:
             cursor = self.conn.cursor()
@@ -330,7 +662,9 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
             if isinstance(layer_config, dict):
                 layer_config = LayerConfig(**layer_config)
             
-            if layer_config.type == "redis":
+            if layer_config.type == "dict":
+                layer = DictLayer(layer_config)
+            elif layer_config.type == "redis":
                 layer = RedisLayer(layer_config)
             elif layer_config.type == "elasticsearch":
                 layer = ElasticsearchLayer(layer_config)
@@ -353,6 +687,7 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
         ]
     
     def search(self, mention: str) -> List[DatabaseRecord]:
+        """Search through layers with fallback"""
         found_in_layer = None
         results = []
         
@@ -381,6 +716,7 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
         return results
     
     def _cache_write(self, query: str, results: List[DatabaseRecord], source_layer: DatabaseLayer):
+        """Write results to upper layers"""
         for layer in self.layers:
             if layer.priority >= source_layer.priority:
                 continue
@@ -417,3 +753,83 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
     
     def sort_by_popularity(self, records: List[DatabaseRecord]) -> List[DatabaseRecord]:
         return sorted(records, key=lambda x: x.popularity, reverse=True)
+    
+    def load_entities(
+        self,
+        filepath: str,
+        target_layers: List[str] = None,
+        batch_size: int = 1000,
+        overwrite: bool = False
+    ) -> Dict[str, int]:
+        """
+        Load entities from JSONL file
+        
+        JSONL format (DatabaseRecord):
+            {"entity_id": "Q1", "label": "Python", "aliases": [...], "popularity": 1000000, ...}
+        
+        Args:
+            filepath: path to .jsonl file
+            target_layers: ['dict', 'redis', 'elasticsearch', 'postgres'] or None (all writable)
+            batch_size: batch size for bulk operations
+            overwrite: overwrite existing entities
+        
+        Returns:
+            {'redis': 1500, 'elasticsearch': 1500}
+        """
+        print(f"\nLoading entities from {filepath}...")
+        
+        # Parse JSONL
+        entities = []
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    data = json.loads(line)
+                    entity = DatabaseRecord(**data)
+                    entities.append(entity)
+                except Exception as e:
+                    print(f"[WARN] Line {line_num} parse error: {e}")
+                    continue
+        
+        print(f"✓ Loaded {len(entities)} entities from file")
+        
+        # Determine target layers
+        if target_layers is None:
+            target_layers = [l.config.type for l in self.layers if l.write]
+        
+        # Load to each layer
+        results = {}
+        for layer in self.layers:
+            if layer.config.type not in target_layers:
+                continue
+            
+            if not layer.is_available():
+                print(f"[WARN] {layer.config.type} unavailable, skipping")
+                continue
+            
+            print(f"\nLoading to {layer.config.type}...")
+            count = layer.load_bulk(entities, overwrite=overwrite, batch_size=batch_size)
+            results[layer.config.type] = count
+            print(f"✓ Loaded {count} entities")
+        
+        return results
+    
+    def clear_layers(self, layer_names: List[str] = None):
+        """Clear all entities in specified layers"""
+        for layer in self.layers:
+            if layer_names and layer.config.type not in layer_names:
+                continue
+            
+            print(f"Clearing {layer.config.type}...")
+            layer.clear()
+            print(f"✓ Cleared")
+    
+    def count_entities(self) -> Dict[str, int]:
+        """Count entities in each layer"""
+        counts = {}
+        for layer in self.layers:
+            counts[layer.config.type] = layer.count()
+        return counts

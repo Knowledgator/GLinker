@@ -25,11 +25,27 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
             ("sort_by_position", {})
         ]
     
-    def __call__(self, texts: List[str], candidates: List[List[Any]]) -> L3Output:
+    def __call__(
+        self, 
+        texts: List[str] = None,
+        candidates: List[List[Any]] = None,
+        input_data: L3Input = None
+    ) -> L3Output:
         """Process texts with candidate labels"""
+        
+        # Support both direct params and L3Input
+        if texts is not None and candidates is not None:
+            texts_to_process = texts
+            candidates_to_process = candidates
+        elif input_data is not None:
+            texts_to_process = input_data.texts
+            candidates_to_process = input_data.labels
+        else:
+            raise ValueError("Either 'texts'+'candidates' or 'input_data' must be provided")
+        
         all_entities = []
         
-        for text, text_candidates in zip(texts, candidates):
+        for text, text_candidates in zip(texts_to_process, candidates_to_process):
             # Create labels from candidates
             if self.schema:
                 labels = self._create_gliner_labels(text_candidates)
@@ -58,7 +74,6 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
             return candidate.label
         return str(candidate)
     
-    ## TODO replace candidates with labels
     def _create_gliner_labels(self, candidates: List[Any]) -> List[str]:
         """Create GLiNER labels using schema template"""
         template = self.schema.get('template', '{label}')
@@ -88,7 +103,6 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         
         return labels
     
-    # TODO: move to l0
     def _rank_entities(self, entities: List[L3Entity], candidates: List[Any]) -> List[L3Entity]:
         """Re-rank entities using multiple scoring factors"""
         # Build label to candidate mapping
