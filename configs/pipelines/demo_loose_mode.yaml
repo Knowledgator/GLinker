@@ -1,0 +1,110 @@
+# Demo pipeline with LOOSE matching mode
+# Allows L3 to find entities that L1 (spaCy NER) missed
+# Best for: Maximum recall, when you want all possible entities
+
+name: "demo_loose_mode"
+description: "Pipeline with loose matching - includes L3 entities outside L1 mentions"
+
+nodes:
+  - id: "l1"
+    processor: "l1_batch"
+    inputs:
+      texts:
+        source: "$input"
+        fields: "texts"
+    output:
+      key: "l1_result"
+    config:
+      model: "en_core_sci_sm"
+      device: "cpu"
+      batch_size: 1
+      max_right_context: 50
+      max_left_context: 50
+      min_entity_length: 2
+      include_noun_chunks: true
+
+  - id: "l2"
+    processor: "l2_chain"
+    inputs:
+      mentions:
+        source: "l1_result"
+        fields: "entities"
+    output:
+      key: "l2_result"
+    schema:
+      template: "{label}: {description}"
+    config:
+      max_candidates: 5
+      min_popularity: 0
+      embeddings:
+        enabled: true
+        model_name: "BioMike/gliner-deberta-base-v1-post"
+        dim: 768
+      layers:
+        - type: "dict"
+          priority: 0
+          write: true
+          search_mode: ["exact", "fuzzy"]
+          ttl: 0
+          cache_policy: "always"
+          field_mapping:
+            entity_id: "entity_id"
+            label: "label"
+            aliases: "aliases"
+            description: "description"
+            entity_type: "entity_type"
+            popularity: "popularity"
+          fuzzy:
+            max_distance: 64
+            min_similarity: 0.6
+            n_gram_size: 3
+            prefix_length: 1
+
+  - id: "l3"
+    processor: "l3_batch"
+    inputs:
+      texts:
+        source: "$input"
+        fields: "texts"
+      candidates:
+        source: "l2_result"
+        fields: "candidates"
+    output:
+      key: "l3_result"
+    schema:
+      template: "{label}: {description}"
+    config:
+      model_name: "BioMike/gliner-deberta-base-v1-post"
+      huggingface_token: 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
+      device: "cuda"
+      threshold: 0.5
+      flat_ner: true
+      multi_label: false
+      batch_size: 1
+      use_precomputed_embeddings: true
+      cache_embeddings: true
+      max_length: 512
+
+  - id: "l0"
+    processor: "l0_aggregator"
+    requires: ["l1", "l2", "l3"]
+    inputs:
+      l1_entities:
+        source: "l1_result"
+        fields: "entities"
+      l2_candidates:
+        source: "l2_result"
+        fields: "candidates"
+      l3_entities:
+        source: "l3_result"
+        fields: "entities"
+    output:
+      key: "l0_result"
+    config:
+      min_confidence: 0.0
+      include_unlinked: true
+      return_all_candidates: true
+      strict_matching: false  # LOOSE mode - include L3 entities outside L1 mentions
+      position_tolerance: 2  # Max char difference for L1-L3 position matching
+    schema:
+      template: "{label}: {description}"
