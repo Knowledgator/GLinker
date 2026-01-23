@@ -147,3 +147,7 @@ cython_debug/
 output.json
 output/
 temp/
+gliner*/
+.gradio/
+# *.jsonl
+# *.json

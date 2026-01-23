@@ -1,0 +1,20 @@
+# Core dependencies
+pydantic>=2.0.0
+pyyaml>=6.0
+
+# NER and Entity Linking
+spacy>=3.7.0
+gliner>=0.2.0
+
+# Database layers
+redis>=5.0.0
+elasticsearch>=8.11.0
+psycopg2-binary>=2.9.9
+
+# Scientific text processing (spaCy model)
+# Install separately: python -m spacy download en_core_sci_sm
+# Or: pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
+
+# Development dependencies
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
