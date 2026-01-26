@@ -1,11 +1,11 @@
 from typing import List, Optional, Dict, Tuple
-from src.core.base import BaseComponent
+from glinker.core.base import BaseComponent
 from .models import (
     L0Config, L0Entity, LinkedEntity
 )
-from src.l1.models import L1Entity
-from src.l2.models import DatabaseRecord
-from src.l3.models import L3Entity
+from glinker.l1.models import L1Entity
+from glinker.l2.models import DatabaseRecord
+from glinker.l3.models import L3Entity
 
 
 class L0Component(BaseComponent[L0Config]):

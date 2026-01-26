@@ -1,7 +1,7 @@
 from typing import Any, List, Optional
 import torch
-from src.core.base import BaseProcessor
-from src.core.registry import processor_registry
+from glinker.core.base import BaseProcessor
+from glinker.core.registry import processor_registry
 from .models import L3Config, L3Input, L3Output, L3Entity
 from .component import L3Component
 

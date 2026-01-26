@@ -1,5 +1,5 @@
 from pydantic import Field
-from src.core.base import BaseConfig, BaseInput, BaseOutput
+from glinker.core.base import BaseConfig, BaseInput, BaseOutput
 
 
 class L1Config(BaseConfig):

@@ -1,6 +1,6 @@
 from typing import Any, List, Union
-from src.core.base import BaseProcessor
-from src.core.registry import processor_registry
+from glinker.core.base import BaseProcessor
+from glinker.core.registry import processor_registry
 from .models import L2Config, L2Input, L2Output, DatabaseRecord
 from .component import DatabaseChainComponent
 

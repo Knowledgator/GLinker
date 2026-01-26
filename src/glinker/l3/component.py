@@ -1,7 +1,7 @@
 from typing import List
 import torch
 from gliner import GLiNER
-from src.core.base import BaseComponent
+from glinker.core.base import BaseComponent
 from .models import L3Config, L3Entity
 
 

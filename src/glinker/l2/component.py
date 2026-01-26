@@ -7,7 +7,7 @@ from elasticsearch.helpers import bulk as es_bulk
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_batch
 
-from src.core.base import BaseComponent
+from glinker.core.base import BaseComponent
 from .models import L2Config, LayerConfig, FuzzyConfig, DatabaseRecord
 
 

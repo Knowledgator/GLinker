@@ -1,11 +1,11 @@
 from typing import Any, List
-from src.core.base import BaseProcessor
-from src.core.registry import processor_registry
+from glinker.core.base import BaseProcessor
+from glinker.core.registry import processor_registry
 from .models import L0Config, L0Input, L0Output, L0Entity
 from .component import L0Component
-from src.l1.models import L1Entity
-from src.l2.models import DatabaseRecord
-from src.l3.models import L3Entity
+from glinker.l1.models import L1Entity
+from glinker.l2.models import DatabaseRecord
+from glinker.l3.models import L3Entity
 
 
 class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):

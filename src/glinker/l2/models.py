@@ -1,6 +1,6 @@
 from pydantic import Field, BaseModel
 from typing import List, Dict, Any, Optional, Literal
-from src.core.base import BaseConfig, BaseInput, BaseOutput
+from glinker.core.base import BaseConfig, BaseInput, BaseOutput
 
 
 class DatabaseRecord(BaseModel):

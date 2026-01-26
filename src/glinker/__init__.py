@@ -1,11 +1,18 @@
+"""
+GLiNKER - Entity Linking Framework
+A modular 4-layer entity linking pipeline using spaCy NER, database search, and GLiNER.
+"""
+
+__version__ = "0.1.0"
+
 # Import processors to register them (decorators will execute)
-from src.l0 import processor as _l0_processor
-from src.l1 import processor as _l1_processor
-from src.l2 import processor as _l2_processor  
-from src.l3 import processor as _l3_processor
+from glinker.l0 import processor as _l0_processor
+from glinker.l1 import processor as _l1_processor
+from glinker.l2 import processor as _l2_processor
+from glinker.l3 import processor as _l3_processor
 
 # Import core
-from src.core import (
+from glinker.core import (
     BaseConfig,
     BaseInput,
     BaseOutput,

@@ -1,6 +1,6 @@
 import spacy
 from spacy.language import Language
-from src.core.base import BaseComponent
+from glinker.core.base import BaseComponent
 from .models import L1Config, L1Entity
 
 
