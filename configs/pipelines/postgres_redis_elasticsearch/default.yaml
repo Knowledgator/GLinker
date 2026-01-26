@@ -1,0 +1,148 @@
+# Three-tier: Redis -> Elasticsearch -> PostgreSQL
+# Use case: Production with full-text search and multi-level caching
+
+name: "postgres_redis_es_default"
+description: "Three-tier: Redis -> Elasticsearch -> PostgreSQL"
+
+nodes:
+  - id: "l1"
+    processor: "l1_batch"
+    inputs:
+      texts:
+        source: "$input"
+        fields: "texts"
+    output:
+      key: "l1_result"
+    config:
+      model: "en_core_sci_sm"
+      device: "cpu"
+      batch_size: 32
+      max_right_context: 50
+      max_left_context: 50
+      min_entity_length: 2
+      include_noun_chunks: true
+
+  - id: "l2"
+    processor: "l2_chain"
+    requires: ["l1"]
+    inputs:
+      mentions:
+        source: "l1_result"
+        fields: "entities"
+    output:
+      key: "l2_result"
+    schema:
+      template: "{label}: {description}"
+    config:
+      max_candidates: 5
+      min_popularity: 0
+      layers:
+        # Tier 1: Redis - Fastest cache (priority 2)
+        - type: "redis"
+          priority: 2
+          write: true
+          search_mode: ["exact"]
+          ttl: 1800
+          cache_policy: "always"
+          config:
+            host: "localhost"
+            port: 6379
+            db: 0
+          field_mapping:
+            entity_id: "entity_id"
+            label: "label"
+            description: "description"
+            entity_type: "entity_type"
+            popularity: "popularity"
+            aliases: "aliases"
+
+        # Tier 2: Elasticsearch - Full-text search (priority 1)
+        - type: "elasticsearch"
+          priority: 1
+          write: true
+          search_mode: ["exact", "fuzzy"]
+          ttl: 86400
+          cache_policy: "miss"
+          config:
+            hosts: ["http://localhost:9200"]
+            index_name: "entities"
+          field_mapping:
+            entity_id: "entity_id"
+            label: "label"
+            description: "description"
+            entity_type: "entity_type"
+            popularity: "popularity"
+            aliases: "aliases"
+          fuzzy:
+            max_distance: 2
+            min_similarity: 0.3
+            prefix_length: 1
+
+        # Tier 3: PostgreSQL - Primary storage (priority 0)
+        - type: "postgres"
+          priority: 0
+          write: false
+          search_mode: ["exact", "fuzzy"]
+          config:
+            host: "localhost"
+            port: 5432
+            database: "entities_db"
+            user: "postgres"
+            password: "postgres"
+          field_mapping:
+            entity_id: "entity_id"
+            label: "label"
+            description: "description"
+            entity_type: "entity_type"
+            popularity: "popularity"
+            aliases: "aliases"
+          fuzzy:
+            min_similarity: 0.3
+
+  - id: "l3"
+    processor: "l3_batch"
+    requires: ["l2"]
+    inputs:
+      texts:
+        source: "$input"
+        fields: "texts"
+      candidates:
+        source: "l2_result"
+        fields: "candidates"
+    output:
+      key: "l3_result"
+    schema:
+      template: "{label}: {description}"
+    config:
+      model_name: "BioMike/gliner-deberta-base-v1-post"
+      huggingface_token: "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"
+      device: "cuda"
+      threshold: 0.5
+      flat_ner: true
+      multi_label: false
+      batch_size: 1
+      max_length: 512
+
+  - id: "l0"
+    processor: "l0_aggregator"
+    requires: ["l1", "l2", "l3"]
+    inputs:
+      l1_entities:
+        source: "l1_result"
+        fields: "entities"
+      l2_candidates:
+        source: "l2_result"
+        fields: "candidates"
+      l3_entities:
+        source: "l3_result"
+        fields: "entities"
+    output:
+      key: "l0_result"
+    config:
+      min_confidence: 0.0
+      include_unlinked: true
+      return_all_candidates: false
+      strict_matching: true
+      position_tolerance: 2
+    schema:
+      template: "{label}: {description}"

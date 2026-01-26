@@ -1,0 +1,116 @@
+# PostgreSQL with precomputed embeddings
+# Use case: BiEncoder models with persistent embedding storage
+# Setup: Run executor.precompute_embeddings(target_layers=["postgres"]) first
+
+name: "postgres_embeddings"
+description: "PostgreSQL with precomputed embeddings"
+
+nodes:
+  - id: "l1"
+    processor: "l1_batch"
+    inputs:
+      texts:
+        source: "$input"
+        fields: "texts"
+    output:
+      key: "l1_result"
+    config:
+      model: "en_core_sci_sm"
+      device: "cpu"
+      batch_size: 32
+      max_right_context: 50
+      max_left_context: 50
+      min_entity_length: 2
+      include_noun_chunks: true
+
+  - id: "l2"
+    processor: "l2_chain"
+    requires: ["l1"]
+    inputs:
+      mentions:
+        source: "l1_result"
+        fields: "entities"
+    output:
+      key: "l2_result"
+    schema:
+      template: "{label}: {description}"
+    config:
+      max_candidates: 10
+      min_popularity: 0
+      embeddings:
+        enabled: true
+        model_name: "BioMike/gliner-deberta-base-v1-post"
+        dim: 768
+        precompute_on_load: false
+      layers:
+        - type: "postgres"
+          priority: 0
+          write: false
+          search_mode: ["exact", "fuzzy"]
+          config:
+            host: "localhost"
+            port: 5432
+            database: "entities_db"
+            user: "postgres"
+            password: "postgres"
+          field_mapping:
+            entity_id: "entity_id"
+            label: "label"
+            description: "description"
+            entity_type: "entity_type"
+            popularity: "popularity"
+            aliases: "aliases"
+            embedding: "embedding"
+            embedding_model_id: "embedding_model_id"
+          fuzzy:
+            min_similarity: 0.3
+
+  - id: "l3"
+    processor: "l3_batch"
+    requires: ["l2"]
+    inputs:
+      texts:
+        source: "$input"
+        fields: "texts"
+      candidates:
+        source: "l2_result"
+        fields: "candidates"
+    output:
+      key: "l3_result"
+    schema:
+      template: "{label}: {description}"
+    config:
+      model_name: "BioMike/gliner-deberta-base-v1-post"
+      huggingface_token: "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"
+      device: "cuda"
+      threshold: 0.5
+      flat_ner: true
+      multi_label: false
+      batch_size: 1
+      use_precomputed_embeddings: true
+      cache_embeddings: false
+      max_length: 512
+
+  - id: "l0"
+    processor: "l0_aggregator"
+    requires: ["l1", "l2", "l3"]
+    inputs:
+      l1_entities:
+        source: "l1_result"
+        fields: "entities"
+      l2_candidates:
+        source: "l2_result"
+        fields: "candidates"
+      l3_entities:
+        source: "l3_result"
+        fields: "entities"
+    output:
+      key: "l0_result"
+    config:
+      min_confidence: 0.0
+      include_unlinked: true
+      return_all_candidates: true
+      strict_matching: true
+      position_tolerance: 2
+    schema:
+      template: "{label}: {description}"
