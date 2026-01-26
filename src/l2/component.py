@@ -928,7 +928,7 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
             
             self.layers.append(layer)
         
-        self.layers.sort(key=lambda x: x.priority)
+        self.layers.sort(key=lambda x: x.priority, reverse=True)  # Higher priority checked first
     
     def get_available_methods(self) -> List[str]:
         return [
@@ -969,9 +969,10 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
         return results
     
     def _cache_write(self, query: str, results: List[DatabaseRecord], source_layer: DatabaseLayer):
-        """Write results to upper layers"""
+        """Write results to upper layers (higher priority = checked earlier)"""
         for layer in self.layers:
-            if layer.priority >= source_layer.priority:
+            # Skip source layer and all layers with lower priority
+            if layer.priority <= source_layer.priority:
                 continue
             if not layer.write:
                 continue

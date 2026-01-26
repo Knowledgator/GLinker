@@ -3,22 +3,38 @@
 set -e
 
 echo "=========================================="
+echo "CLEANING UP EXISTING CONTAINERS"
+echo "=========================================="
+
+# Stop and remove all database containers
+echo "Stopping and removing existing containers..."
+docker stop postgres elasticsearch redis 2>/dev/null || true
+docker rm -f postgres elasticsearch redis 2>/dev/null || true
+
+echo "✓ Cleanup complete!"
+echo ""
+
+echo "=========================================="
 echo "STARTING ALL DATABASE SERVICES"
 echo "=========================================="
 
-# Check Docker
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker not found! Installing Docker..."
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
-    sudo sh /tmp/get-docker.sh
-    sudo usermod -aG docker $USER
-    echo "✓ Docker installed!"
+# Check Docker - improved check
+if ! docker --version &> /dev/null; then
+    echo "❌ Docker not found! Please install Docker first."
     echo ""
-    echo "⚠️  Please log out and log back in, then run this script again."
-    exit 0
+    echo "Install Docker with:"
+    echo "  sudo apt update"
+    echo "  sudo apt install docker.io"
+    echo "  sudo usermod -aG docker $USER"
+    echo ""
+    echo "Or use snap (not recommended):"
+    echo "  sudo snap install docker"
+    echo ""
+    echo "Then log out and log back in."
+    exit 1
 fi
 
-echo "✓ Docker is installed"
+echo "✓ Docker is installed: $(docker --version)"
 
 # Check Docker permissions
 if ! docker ps > /dev/null 2>&1; then
@@ -29,17 +45,17 @@ if ! docker ps > /dev/null 2>&1; then
     echo ""
     echo "✓ User added to docker group"
     echo ""
-    echo "To apply changes, run one of:"
+    echo "⚠️  Changes will take effect after you:"
     echo "  1. Log out and log back in"
-    echo "  2. Run: newgrp docker && ./setup_all.sh"
-    echo "  3. Reboot your system"
+    echo "  OR"
+    echo "  2. Run: newgrp docker"
+    echo "  Then run this script again: ./setup_all.sh"
     exit 0
 fi
 
 # Start PostgreSQL
 echo ""
 echo "Starting PostgreSQL container..."
-docker rm -f postgres 2>/dev/null || true
 docker run -d \
   --name postgres \
   -p 5432:5432 \
@@ -61,7 +77,6 @@ done
 # Start Elasticsearch
 echo ""
 echo "Starting Elasticsearch container..."
-docker rm -f elasticsearch 2>/dev/null || true
 docker run -d \
   --name elasticsearch \
   -p 9200:9200 \
@@ -83,7 +98,6 @@ done
 # Start Redis
 echo ""
 echo "Starting Redis container..."
-docker rm -f redis 2>/dev/null || true
 docker run -d \
   --name redis \
   -p 6379:6379 \
@@ -108,6 +122,9 @@ echo "  🔴 Redis:          localhost:6379"
 echo ""
 echo "=========================================="
 echo ""
+echo "Container status:"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+echo ""
 echo "Next steps - Load data into databases:"
 echo ""
 echo "  python scripts/database/setup_postgres.py"
@@ -116,4 +133,7 @@ echo "  python scripts/database/setup_redis.py"
 echo ""
 echo "To stop services:"
 echo "  docker stop postgres elasticsearch redis"
+echo ""
+echo "To remove services:"
+echo "  docker rm -f postgres elasticsearch redis"
 echo ""
