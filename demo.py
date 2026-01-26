@@ -12,7 +12,7 @@ import torch
 # ========== CONFIGURATION ==========
 
 # Default config - on-the-fly caching
-DEFAULT_CONFIG = "configs/pipelines/demo_onthefly_cache.yaml"
+DEFAULT_CONFIG = "configs/pipelines/postgres_redis_elasticsearch/default.yaml"
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Entity Linking Pipeline Demo")
@@ -39,8 +39,17 @@ with open(args.config, 'r') as f:
 print("🚀 Initializing executor...")
 executor = ProcessorFactory.create_from_dict(yaml_config, verbose=False)
 
-print("📥 Loading entities...")
-executor.load_entities(args.entities, target_layers=['dict'])
+# Auto-detect layer types from L2 config
+l2_node = next((n for n in yaml_config.get('nodes', []) if n.get('id') == 'l2'), None)
+if l2_node:
+    layer_types = [layer['type'] for layer in l2_node.get('config', {}).get('layers', [])]
+    target_layers = layer_types if layer_types else ['dict']
+else:
+    target_layers = ['dict']
+
+
+print(f"📥 Loading entities into layers: {target_layers}...")
+executor.load_entities(args.entities, target_layers=target_layers)
 
 # Check if cache_embeddings is enabled in L3 config
 l3_node = next((n for n in yaml_config.get('nodes', []) if n.get('id') == 'l3'), None)
@@ -216,7 +225,7 @@ with gr.Blocks(title="Entity Linking Pipeline Demo") as demo:
         threshold = gr.Slider(
             0,
             1,
-            value=0.2,
+            value=0.6,
             step=0.05,
             label="Threshold",
             info="Lower the threshold to increase how many entities get predicted.",
@@ -241,7 +250,7 @@ with gr.Blocks(title="Entity Linking Pipeline Demo") as demo:
 
     # Examples
     gr.Examples(
-        examples=[[text, 0.2] for text in example_texts],
+        examples=[[text, 0.6] for text in example_texts],
         inputs=[input_text, threshold],
         label="Example Texts from PubMed"
     )
