@@ -6,7 +6,7 @@ import argparse
 # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import gradio as gr
-from src.core.factory import ProcessorFactory
+from glinker.core.factory import ProcessorFactory
 import torch
 
 # ========== CONFIGURATION ==========
@@ -25,8 +25,8 @@ parser.add_argument(
 parser.add_argument(
     "--entities", "-e",
     type=str,
-    default="pubmesh_ontology.jsonl",
-    help="Path to entities JSONL file (default: pubmesh_ontology.jsonl)"
+    default="data/pubmesh_ontology.jsonl",
+    help="Path to entities JSONL file (default: data/pubmesh_ontology.jsonl)"
 )
 args, _ = parser.parse_known_args()
 
