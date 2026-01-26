@@ -1,0 +1,897 @@
+from typing import Dict, List, Set, Any, Optional, Literal, Union
+from collections import defaultdict, deque, OrderedDict
+from pydantic import BaseModel, Field
+from datetime import datetime
+from pathlib import Path
+import re
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# INPUT/OUTPUT CONFIG
+# ============================================================================
+
+class ReshapeConfig(BaseModel):
+    """Configuration for data reshaping"""
+    by: str = Field(..., description="Reference structure path: 'l1_result.entities'")
+    mode: Literal["flatten_per_group", "preserve_structure"] = Field(
+        "flatten_per_group",
+        description="Reshape mode"
+    )
+
+
+class InputConfig(BaseModel):
+    """
+    Unified input data specification
+    
+    Examples:
+        source: "l1_result"
+        fields: "entities[*].text"
+        reduce: "flatten"
+    """
+    source: str = Field(
+        ...,
+        description="Data source: key ('l1_result'), index ('outputs[-1]'), or '$input'"
+    )
+    
+    fields: Union[str, List[str], None] = Field(
+        None,
+        description="JSONPath fields: 'entities[*].text' or ['label', 'score']"
+    )
+    
+    reduce: Literal["all", "first", "last", "flatten"] = Field(
+        "all",
+        description="Reduction mode for lists"
+    )
+    
+    reshape: Optional[ReshapeConfig] = Field(
+        None,
+        description="Data reshaping configuration"
+    )
+    
+    template: Optional[str] = Field(
+        None,
+        description="Field concatenation template: '{label}: {description}'"
+    )
+    
+    filter: Optional[str] = Field(
+        None,
+        description="Filter expression: 'score > 0.5'"
+    )
+    
+    default: Any = None
+
+
+class OutputConfig(BaseModel):
+    """Output specification"""
+    key: str = Field(..., description="Key for storing in context")
+    fields: Union[str, List[str], None] = Field(
+        None,
+        description="Fields to save (optional, defaults to all)"
+    )
+
+
+# ============================================================================
+# PIPE NODE
+# ============================================================================
+
+class PipeNode(BaseModel):
+    """
+    Single node in DAG pipeline
+    
+    Represents one processing stage with:
+    - Inputs (where to get data)
+    - Processor (what to do)
+    - Output (where to store result)
+    - Dependencies (execution order)
+    """
+    
+    id: str = Field(..., description="Unique node identifier")
+    
+    processor: str = Field(..., description="Processor name from registry")
+    
+    inputs: Dict[str, InputConfig] = Field(
+        default_factory=dict,
+        description="Input parameter mappings"
+    )
+    
+    output: OutputConfig = Field(..., description="Output specification")
+    
+    requires: List[str] = Field(
+        default_factory=list,
+        description="Explicit dependencies (node IDs)"
+    )
+    
+    config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Processor configuration"
+    )
+    
+    schema: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Schema for field mappings/transformations"
+    )
+    
+    condition: Optional[str] = Field(
+        None,
+        description="Conditional execution expression"
+    )
+    
+    class Config:
+        fields = {'schema': 'schema'}
+
+
+# ============================================================================
+# PIPE CONTEXT
+# ============================================================================
+
+class PipeContext:
+    """
+    Pipeline execution context
+    
+    Stores all outputs from pipeline stages and provides unified access:
+    - By key: "l1_result"
+    - By index: "outputs[-1]" (last output)
+    - Pipeline input: "$input"
+    """
+    
+    def __init__(self, pipeline_input: Any = None):
+        self._outputs: OrderedDict[str, Any] = OrderedDict()
+        self._execution_order: List[str] = []
+        self._pipeline_input = pipeline_input
+        self._metadata: Dict[str, Any] = {}
+    
+    def set(self, key: str, value: Any, metadata: Optional[Dict] = None):
+        """
+        Store output
+        
+        Args:
+            key: Output key
+            value: Output value
+            metadata: Optional metadata (timing, source, etc.)
+        """
+        self._outputs[key] = value
+        self._execution_order.append(key)
+        
+        if metadata:
+            self._metadata[key] = metadata
+    
+    def get(self, source: str) -> Any:
+        """
+        Unified data access
+        
+        Examples:
+        - "$input" → pipeline input
+        - "outputs[-1]" → last output
+        - "outputs[0]" → first output
+        - "l1_result" → by key
+        """
+        if source == "$input":
+            return self._pipeline_input
+        
+        if source.startswith("outputs["):
+            index_str = source.replace("outputs[", "").replace("]", "")
+            index = int(index_str)
+            
+            if index < 0:
+                index = len(self._execution_order) + index
+            
+            if 0 <= index < len(self._execution_order):
+                key = self._execution_order[index]
+                return self._outputs[key]
+            
+            return None
+        
+        return self._outputs.get(source)
+    
+    def has(self, key: str) -> bool:
+        """Check if output exists"""
+        return key in self._outputs
+    
+    def get_all_outputs(self) -> Dict[str, Any]:
+        """Get all outputs as dict"""
+        return dict(self._outputs)
+    
+    def get_metadata(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for output"""
+        return self._metadata.get(key)
+    
+    def get_execution_order(self) -> List[str]:
+        """Get list of output keys in execution order"""
+        return list(self._execution_order)
+    
+    @property
+    def data(self) -> Dict[str, Any]:
+        """For compatibility"""
+        return dict(self._outputs)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Serialize context to dict
+        
+        Returns:
+            Dict with full context state
+        """
+        def serialize(value):
+            if hasattr(value, 'dict'):
+                return {'__type__': 'pydantic', 'data': value.dict()}
+            elif isinstance(value, list):
+                return [serialize(item) for item in value]
+            elif isinstance(value, dict):
+                return {k: serialize(v) for k, v in value.items()}
+            elif isinstance(value, OrderedDict):
+                return {'__type__': 'OrderedDict', 'data': list(value.items())}
+            elif isinstance(value, (str, int, float, bool, type(None))):
+                return value
+            else:
+                return {'__type__': 'object', 'repr': repr(value)}
+        
+        return {
+            'outputs': {k: serialize(v) for k, v in self._outputs.items()},
+            'execution_order': self._execution_order,
+            'pipeline_input': serialize(self._pipeline_input),
+            'metadata': self._metadata,
+            'saved_at': datetime.now().isoformat()
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PipeContext':
+        """
+        Deserialize context from dict
+        
+        Args:
+            data: Dict with saved state
+            
+        Returns:
+            Restored PipeContext
+        """
+        def deserialize(value):
+            if isinstance(value, dict):
+                if '__type__' in value:
+                    if value['__type__'] == 'OrderedDict':
+                        return OrderedDict(value['data'])
+                    elif value['__type__'] == 'pydantic':
+                        return value['data']
+                    elif value['__type__'] == 'object':
+                        return value['repr']
+                return {k: deserialize(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [deserialize(item) for item in value]
+            else:
+                return value
+        
+        pipeline_input = deserialize(data.get('pipeline_input'))
+        context = cls(pipeline_input)
+        
+        outputs_data = data.get('outputs', {})
+        for key, value in outputs_data.items():
+            context._outputs[key] = deserialize(value)
+        
+        context._execution_order = data.get('execution_order', [])
+        context._metadata = data.get('metadata', {})
+        
+        return context
+    
+    def to_json(self, filepath: str = None, indent: int = 2) -> str:
+        """
+        Serialize to JSON
+        
+        Args:
+            filepath: Path to save (optional)
+            indent: Indentation for formatting
+            
+        Returns:
+            JSON string
+        """
+        data = self.to_dict()
+        json_str = json.dumps(data, indent=indent, ensure_ascii=False)
+        
+        if filepath:
+            Path(filepath).write_text(json_str, encoding='utf-8')
+            logger.info(f"Context saved to {filepath}")
+        
+        return json_str
+    
+    @classmethod
+    def from_json(cls, json_data: str = None, filepath: str = None) -> 'PipeContext':
+        """
+        Load from JSON
+        
+        Args:
+            json_data: JSON string (optional)
+            filepath: Path to JSON file (optional)
+            
+        Returns:
+            Restored PipeContext
+        """
+        if filepath:
+            json_data = Path(filepath).read_text(encoding='utf-8')
+            logger.info(f"Context loaded from {filepath}")
+        
+        if not json_data:
+            raise ValueError("Either json_data or filepath must be provided")
+        
+        data = json.loads(json_data)
+        return cls.from_dict(data)
+
+
+# ============================================================================
+# FIELD RESOLVER
+# ============================================================================
+
+class FieldResolver:
+    """Resolve fields from data using path expressions"""
+    
+    @staticmethod
+    def resolve(context: PipeContext, config: InputConfig) -> Any:
+        """Main resolve method"""
+        data = context.get(config.source)
+        if data is None:
+            return config.default
+        
+        if config.fields:
+            data = FieldResolver._extract_fields(data, config.fields)
+        
+        if config.template:
+            data = FieldResolver._format_template(data, config.template)
+        
+        if isinstance(data, list) and config.reduce:
+            data = FieldResolver._apply_reduce(data, config.reduce)
+        
+        if config.filter:
+            data = FieldResolver._apply_filter(data, config.filter)
+        
+        return data
+    
+    @staticmethod
+    def _extract_fields(data: Any, path: str) -> Any:
+        """
+        Extract field from data using path
+        
+        Examples:
+            'entities' -> data.entities
+            'entities[*]' -> [item for item in data.entities]
+            'entities[*].text' -> [item.text for item in data.entities]
+            'entities[*][*].text' -> [[e.text for e in group] for group in data.entities]
+        """
+        parts = path.split('.')
+        current = data
+        
+        for part in parts:
+            if '[' in part:
+                current = FieldResolver._handle_brackets(current, part)
+            else:
+                current = FieldResolver._get_attr(current, part)
+            
+            if current is None:
+                return None
+        
+        return current
+    
+    @staticmethod
+    def _handle_brackets(data: Any, part: str) -> Any:
+        """Handle parts with brackets like 'entities[*]' or 'items[0]' or '[*][*]'"""
+        if part.startswith('['):
+            field_name = None
+            brackets = part
+        else:
+            bracket_idx = part.index('[')
+            field_name = part[:bracket_idx]
+            brackets = part[bracket_idx:]
+        
+        current = data
+        if field_name:
+            current = FieldResolver._get_attr(current, field_name)
+        
+        if current is None:
+            return None
+        
+        while '[' in brackets:
+            start = brackets.index('[')
+            end = brackets.index(']')
+            content = brackets[start+1:end]
+            brackets = brackets[end+1:]
+            
+            if content == '*':
+                if not isinstance(current, list):
+                    current = [current]
+            elif ':' in content:
+                parts = content.split(':')
+                s = int(parts[0]) if parts[0] else None
+                e = int(parts[1]) if parts[1] else None
+                current = current[s:e]
+            else:
+                idx = int(content)
+                current = current[idx]
+        
+        return current
+    
+    @staticmethod
+    def _get_attr(data: Any, field: str) -> Any:
+        """Get attribute from data (works with dict, object, list)"""
+        if isinstance(data, list):
+            return [FieldResolver._get_attr(item, field) for item in data]
+        
+        if isinstance(data, dict):
+            return data.get(field)
+        
+        return getattr(data, field, None)
+    
+    @staticmethod
+    def _format_template(data: Union[List[Any], Any], template: str) -> Union[List[str], str]:
+        """Format data using template"""
+        if isinstance(data, list):
+            results = []
+            for item in data:
+                try:
+                    if hasattr(item, 'dict'):
+                        results.append(template.format(**item.dict()))
+                    elif isinstance(item, dict):
+                        results.append(template.format(**item))
+                    else:
+                        results.append(str(item))
+                except:
+                    results.append(str(item))
+            return results
+        else:
+            try:
+                if hasattr(data, 'dict'):
+                    return template.format(**data.dict())
+                elif isinstance(data, dict):
+                    return template.format(**data)
+                else:
+                    return str(data)
+            except:
+                return str(data)
+    
+    @staticmethod
+    def _apply_reduce(data: List[Any], mode: str) -> Any:
+        """Reduce list based on mode"""
+        if mode == "first":
+            return data[0] if data else None
+        
+        elif mode == "last":
+            return data[-1] if data else None
+        
+        elif mode == "flatten":
+            def flatten(lst):
+                result = []
+                for item in lst:
+                    if isinstance(item, list):
+                        result.extend(flatten(item))
+                    else:
+                        result.append(item)
+                return result
+            
+            return flatten(data)
+        
+        return data
+    
+    @staticmethod
+    def _apply_filter(data: List[Any], filter_expr: str) -> List[Any]:
+        """Filter list based on expression"""
+        if not isinstance(data, list):
+            return data
+        
+        pattern = r'(\w+)\s*(>=|<=|>|<|==|!=)\s*(.+)'
+        match = re.match(pattern, filter_expr)
+        
+        if not match:
+            return data
+        
+        field, operator, value = match.groups()
+        
+        try:
+            if value.startswith("'") or value.startswith('"'):
+                value = value.strip("'\"")
+            elif '.' in value:
+                value = float(value)
+            else:
+                value = int(value)
+        except:
+            pass
+        
+        result = []
+        for item in data:
+            try:
+                if isinstance(item, dict):
+                    item_value = item.get(field)
+                else:
+                    item_value = getattr(item, field, None)
+                
+                if item_value is None:
+                    continue
+                
+                passes = False
+                if operator == '>':
+                    passes = item_value > value
+                elif operator == '>=':
+                    passes = item_value >= value
+                elif operator == '<':
+                    passes = item_value < value
+                elif operator == '<=':
+                    passes = item_value <= value
+                elif operator == '==':
+                    passes = item_value == value
+                elif operator == '!=':
+                    passes = item_value != value
+                
+                if passes:
+                    result.append(item)
+            except:
+                continue
+        
+        return result
+
+
+# ============================================================================
+# DAG EXECUTOR
+# ============================================================================
+
+class DAGPipeline(BaseModel):
+    """DAG pipeline configuration"""
+    name: str = Field(...)
+    nodes: List[PipeNode] = Field(...)
+    description: Optional[str] = None
+
+
+class DAGExecutor:
+    """Executes DAG pipeline with topological sort"""
+    
+    def __init__(self, pipeline: DAGPipeline, verbose: bool = False):
+        self.pipeline = pipeline
+        self.verbose = verbose
+        
+        self.nodes_map: Dict[str, PipeNode] = {}
+        self.dependency_graph: Dict[str, List[str]] = defaultdict(list)
+        self.reverse_graph: Dict[str, Set[str]] = defaultdict(set)
+        self.processors: Dict[str, Any] = {}
+        
+        self._build_dependency_graph()
+        self._initialize_processors()
+    
+    def _build_dependency_graph(self):
+        """Build dependency graph from nodes"""
+        for node in self.pipeline.nodes:
+            self.nodes_map[node.id] = node
+        
+        for node in self.pipeline.nodes:
+            # Explicit dependencies
+            for dep_id in node.requires:
+                self.dependency_graph[dep_id].append(node.id)
+                self.reverse_graph[node.id].add(dep_id)
+            
+            # Implicit dependencies from inputs
+            for input_config in node.inputs.values():
+                source = input_config.source
+                
+                if source == "$input" or source.startswith("outputs["):
+                    continue
+                
+                if source in self.nodes_map:
+                    self.dependency_graph[source].append(node.id)
+                    self.reverse_graph[node.id].add(source)
+                
+                if input_config.reshape and input_config.reshape.by:
+                    reshape_source = input_config.reshape.by.split('.')[0]
+                    if reshape_source in self.nodes_map:
+                        if reshape_source not in self.reverse_graph[node.id]:
+                            self.dependency_graph[reshape_source].append(node.id)
+                            self.reverse_graph[node.id].add(reshape_source)
+    
+    def _initialize_processors(self):
+        """Initialize all processors once"""
+        from .registry import processor_registry
+        
+        if self.verbose:
+            logger.info(f"Initializing {len(self.nodes_map)} processors...")
+        
+        for node_id, node in self.nodes_map.items():
+            try:
+                processor_factory = processor_registry.get(node.processor)
+                processor = processor_factory(config_dict=node.config, pipeline=None)
+                self.processors[node_id] = processor
+                
+                if self.verbose:
+                    logger.info(f"  Created processor for '{node_id}' ({node.processor})")
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to create processor '{node.processor}' for node '{node_id}': {e}"
+                )
+        
+        if self.verbose:
+            logger.info(f"All processors initialized and cached")
+    
+    def _topological_sort(self) -> List[List[str]]:
+        """Topological sort with level grouping"""
+        in_degree = {}
+        for node_id in self.nodes_map:
+            in_degree[node_id] = len(self.reverse_graph.get(node_id, set()))
+        
+        queue = deque([
+            node_id for node_id, degree in in_degree.items() 
+            if degree == 0
+        ])
+        
+        levels = []
+        visited = set()
+        
+        while queue:
+            current_level = list(queue)
+            levels.append(current_level)
+            
+            next_queue = deque()
+            for node_id in current_level:
+                visited.add(node_id)
+                
+                for dependent_id in self.dependency_graph.get(node_id, []):
+                    in_degree[dependent_id] -= 1
+                    
+                    if in_degree[dependent_id] == 0:
+                        next_queue.append(dependent_id)
+            
+            queue = next_queue
+        
+        if len(visited) != len(self.nodes_map):
+            unvisited = set(self.nodes_map.keys()) - visited
+            raise ValueError(
+                f"Cycle detected in pipeline DAG! "
+                f"Unvisited nodes: {unvisited}"
+            )
+        
+        return levels
+    
+    def load_entities(
+        self,
+        filepath: str,
+        target_layers: List[str] = None,
+        batch_size: int = 1000,
+        overwrite: bool = False
+    ) -> Dict[str, Dict[str, int]]:
+        """
+        Load entities into database layers
+        
+        Finds all L2 processors and loads entities into their database layers.
+        
+        Args:
+            filepath: path to entities.jsonl
+            target_layers: ['dict', 'redis', 'elasticsearch', 'postgres'] or None (all writable)
+            batch_size: batch size for bulk operations
+            overwrite: overwrite existing entities
+        
+        Returns:
+            {'l2_node_id': {'redis': 1500, 'elasticsearch': 1500}}
+        """
+        results = {}
+        
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'load_entities'):
+                if self.verbose:
+                    logger.info(f"\nLoading entities for node '{node_id}'")
+                
+                result = processor.component.load_entities(
+                    filepath=filepath,
+                    target_layers=target_layers,
+                    batch_size=batch_size,
+                    overwrite=overwrite
+                )
+                results[node_id] = result
+        
+        return results
+    
+    def clear_databases(self, layer_names: List[str] = None) -> Dict[str, bool]:
+        """Clear database layers in all L2 processors"""
+        results = {}
+        
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'clear_layers'):
+                processor.component.clear_layers(layer_names)
+                results[node_id] = True
+        
+        return results
+    
+    def count_entities(self) -> Dict[str, Dict[str, int]]:
+        """Count entities in all database layers"""
+        results = {}
+
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'count_entities'):
+                counts = processor.component.count_entities()
+                results[node_id] = counts
+
+        return results
+
+    def precompute_embeddings(
+        self,
+        target_layers: List[str] = None,
+        batch_size: int = 32
+    ) -> Dict[str, int]:
+        """
+        Precompute embeddings for all entities using L3 model and L2 schema.
+
+        Uses:
+        - L3 processor's model for encoding
+        - L2 processor's schema for label formatting
+
+        Args:
+            target_layers: Layer types to update (e.g., ['dict', 'postgres'])
+            batch_size: Batch size for encoding
+
+        Returns:
+            Dict with count of updated entities per layer
+        """
+        # Find L2 and L3 processors
+        l2_processor = None
+        l3_processor = None
+        l2_node = None
+        l3_node = None
+
+        for node_id, processor in self.processors.items():
+            node = self.nodes_map[node_id]
+
+            # Check for L2 (has component with precompute_embeddings)
+            if hasattr(processor, 'component') and hasattr(processor.component, 'precompute_embeddings'):
+                l2_processor = processor
+                l2_node = node
+
+            # Check for L3 (has component with encode_labels)
+            if hasattr(processor, 'component') and hasattr(processor.component, 'encode_labels'):
+                l3_processor = processor
+                l3_node = node
+
+        if not l2_processor:
+            raise ValueError("No L2 processor found with precompute_embeddings support")
+
+        if not l3_processor:
+            raise ValueError("No L3 processor found with encode_labels support")
+
+        # Check if L3 model supports precomputed embeddings
+        if not l3_processor.component.supports_precomputed_embeddings:
+            raise ValueError(
+                f"L3 model '{l3_processor.config.model_name}' doesn't support label precomputation. "
+                "Only BiEncoder models support this feature."
+            )
+
+        # Get schema from L2 node (or L3 as fallback)
+        template = '{label}'
+        if l2_node and l2_node.schema:
+            template = l2_node.schema.get('template', '{label}')
+        elif l3_node and l3_node.schema:
+            template = l3_node.schema.get('template', '{label}')
+
+        # Apply schema to L2 processor
+        if l2_node and l2_node.schema:
+            l2_processor.schema = l2_node.schema
+
+        model_id = l3_processor.config.model_name
+
+        if self.verbose:
+            logger.info(f"\nPrecomputing embeddings:")
+            logger.info(f"  Model: {model_id}")
+            logger.info(f"  Template: {template}")
+            logger.info(f"  Target layers: {target_layers or 'all'}")
+
+        # Create encoder function using L3 component
+        def encoder_fn(labels: List[str]):
+            return l3_processor.component.encode_labels(labels, batch_size=batch_size)
+
+        # Run precompute through L2 component
+        results = l2_processor.component.precompute_embeddings(
+            encoder_fn=encoder_fn,
+            template=template,
+            model_id=model_id,
+            target_layers=target_layers,
+            batch_size=batch_size
+        )
+
+        if self.verbose:
+            logger.info(f"\nPrecompute completed:")
+            for layer, count in results.items():
+                logger.info(f"  {layer}: {count} entities")
+
+        return results
+
+    def setup_l3_cache_writeback(self):
+        """Setup L3 processor to write back embeddings to L2"""
+        l2_processor = None
+        l3_processor = None
+
+        for node_id, processor in self.processors.items():
+            if hasattr(processor, 'component') and hasattr(processor.component, 'precompute_embeddings'):
+                l2_processor = processor
+            if hasattr(processor, '_l2_processor'):
+                l3_processor = processor
+
+        if l2_processor and l3_processor:
+            l3_processor._l2_processor = l2_processor
+            if self.verbose:
+                logger.info("L3 cache write-back enabled")
+    
+    def execute(self, pipeline_input: Any) -> PipeContext:
+        """Execute full pipeline"""
+        context = PipeContext(pipeline_input)
+        execution_levels = self._topological_sort()
+        
+        if self.verbose:
+            logger.info(f"Executing pipeline: {self.pipeline.name}")
+            logger.info(f"Total nodes: {len(self.nodes_map)}")
+            logger.info(f"Execution levels: {len(execution_levels)}")
+        
+        for level_idx, level_nodes in enumerate(execution_levels):
+            if self.verbose:
+                logger.info(f"\n{'='*60}")
+                logger.info(
+                    f"Level {level_idx + 1}/{len(execution_levels)} "
+                    f"({len(level_nodes)} nodes)"
+                )
+                logger.info(f"{'='*60}")
+            
+            for node_id in level_nodes:
+                self._run_node(node_id, context)
+        
+        if self.verbose:
+            logger.info(f"\nPipeline completed successfully!")
+        
+        return context
+    
+    def _run_node(self, node_id: str, context: PipeContext):
+        """Execute single node"""
+        node = self.nodes_map[node_id]
+        
+        if self.verbose:
+            logger.info(f"\nExecuting: {node.id} (processor: {node.processor})")
+        
+        if node.condition and not self._evaluate_condition(node.condition, context):
+            if self.verbose:
+                logger.info(f"  Skipped (condition not met)")
+            return
+        
+        # Resolve inputs
+        kwargs = {}
+        for param_name, input_config in node.inputs.items():
+            try:
+                value = FieldResolver.resolve(context, input_config)
+                kwargs[param_name] = value
+                
+                if self.verbose:
+                    logger.info(f"  Input '{param_name}': {input_config.source}")
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to resolve input '{param_name}' for node '{node_id}': {e}"
+                )
+        
+        # Get cached processor
+        processor = self.processors[node_id]
+        
+        # Apply schema if needed
+        if node.schema and hasattr(processor, 'schema'):
+            processor.schema = node.schema
+        
+        # Execute processor
+        try:
+            result = processor(**kwargs)
+            
+            if self.verbose:
+                logger.info(f"  Processing...")
+        except Exception as e:
+            if self.verbose:
+                logger.error(f"  Failed: {e}")
+            raise RuntimeError(f"Node '{node_id}' failed: {e}")
+        
+        # Extract output fields if specified
+        if node.output.fields:
+            result = FieldResolver._extract_fields(result, node.output.fields)
+        
+        # Store output
+        context.set(node.output.key, result)
+        
+        if self.verbose:
+            logger.info(f"  Output: '{node.output.key}'")
+            logger.info(f"  Success")
+    
+    def _evaluate_condition(self, condition: str, context: PipeContext) -> bool:
+        """Evaluate conditional expression"""
+        return True

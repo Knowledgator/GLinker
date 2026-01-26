@@ -9,7 +9,7 @@ class TestL1ComponentCreation:
     """Tests for L1Component initialization."""
 
     def test_import(self):
-        from src.l1.component import L1Component
+        from glinker.l1.component import L1Component
         assert L1Component is not None
 
     def test_creation(self, l1_component):
@@ -36,7 +36,7 @@ class TestL1ComponentExtractEntities:
         assert isinstance(entities, list)
 
     def test_extract_returns_l1entity(self, l1_component):
-        from src.l1.models import L1Entity
+        from glinker.l1.models import L1Entity
         text = "TP53 mutations cause cancer."
         entities = l1_component.extract_entities(text)
         for entity in entities:
@@ -87,8 +87,8 @@ class TestL1ComponentMinEntityLength:
     """Tests for min_entity_length filtering."""
 
     def test_min_length_filtering(self, l1_config_dict):
-        from src.l1.component import L1Component
-        from src.l1.models import L1Config
+        from glinker.l1.component import L1Component
+        from glinker.l1.models import L1Config
 
         config = L1Config(**{**l1_config_dict, "min_entity_length": 4})
         component = L1Component(config)
@@ -106,7 +106,7 @@ class TestL1ComponentDeduplicate:
     """Tests for deduplicate method."""
 
     def test_deduplicate(self, l1_component):
-        from src.l1.models import L1Entity
+        from glinker.l1.models import L1Entity
 
         entities = [
             L1Entity(text="TP53", start=0, end=4,
@@ -125,7 +125,7 @@ class TestL1ComponentDeduplicate:
         assert deduped == []
 
     def test_deduplicate_no_duplicates(self, l1_component):
-        from src.l1.models import L1Entity
+        from glinker.l1.models import L1Entity
 
         entities = [
             L1Entity(text="A", start=0, end=1,
@@ -142,7 +142,7 @@ class TestL1ComponentSortByPosition:
     """Tests for sort_by_position method."""
 
     def test_sort_by_position(self, l1_component):
-        from src.l1.models import L1Entity
+        from glinker.l1.models import L1Entity
 
         entities = [
             L1Entity(text="C", start=20, end=21,

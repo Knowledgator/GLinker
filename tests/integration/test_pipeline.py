@@ -19,7 +19,7 @@ class TestPipelineExecution:
 
     def test_execute_single_text(self, loaded_executor, single_text):
         """Test pipeline execution with single text."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         result = loaded_executor.execute(L1Input(texts=[single_text]))
 
@@ -30,7 +30,7 @@ class TestPipelineExecution:
 
     def test_execute_multiple_texts(self, loaded_executor, sample_texts):
         """Test pipeline execution with multiple texts."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         result = loaded_executor.execute(L1Input(texts=sample_texts))
 
@@ -40,7 +40,7 @@ class TestPipelineExecution:
 
     def test_l1_result_structure(self, loaded_executor, single_text):
         """Test L1 result structure."""
-        from src.l1.models import L1Input, L1Output
+        from glinker.l1.models import L1Input, L1Output
 
         result = loaded_executor.execute(L1Input(texts=[single_text]))
         l1_result = result.get("l1_result")
@@ -51,8 +51,8 @@ class TestPipelineExecution:
 
     def test_l2_result_structure(self, loaded_executor, single_text):
         """Test L2 result structure."""
-        from src.l1.models import L1Input
-        from src.l2.models import L2Output
+        from glinker.l1.models import L1Input
+        from glinker.l2.models import L2Output
 
         result = loaded_executor.execute(L1Input(texts=[single_text]))
         l2_result = result.get("l2_result")
@@ -62,8 +62,8 @@ class TestPipelineExecution:
 
     def test_l3_result_structure(self, loaded_executor, single_text):
         """Test L3 result structure."""
-        from src.l1.models import L1Input
-        from src.l3.models import L3Output
+        from glinker.l1.models import L1Input
+        from glinker.l3.models import L3Output
 
         result = loaded_executor.execute(L1Input(texts=[single_text]))
         l3_result = result.get("l3_result")
@@ -77,7 +77,7 @@ class TestPipelineWithL0:
 
     def test_l0_result_exists(self, loaded_executor, single_text):
         """Test that L0 result is produced."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         result = loaded_executor.execute(L1Input(texts=[single_text]))
 
@@ -85,8 +85,8 @@ class TestPipelineWithL0:
 
     def test_l0_result_structure(self, loaded_executor, single_text):
         """Test L0 result structure."""
-        from src.l1.models import L1Input
-        from src.l0.models import L0Output
+        from glinker.l1.models import L1Input
+        from glinker.l0.models import L0Output
 
         result = loaded_executor.execute(L1Input(texts=[single_text]))
         l0_result = result.get("l0_result")
@@ -97,7 +97,7 @@ class TestPipelineWithL0:
 
     def test_l0_aggregates_all_layers(self, loaded_executor):
         """Test that L0 aggregates information from all layers."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         text = "TP53 mutations cause breast cancer."
         result = loaded_executor.execute(L1Input(texts=[text]))
@@ -111,7 +111,7 @@ class TestPipelineWithL0:
 
     def test_l0_stats(self, loaded_executor, single_text):
         """Test that L0 produces statistics."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         result = loaded_executor.execute(L1Input(texts=[single_text]))
         l0_result = result.get("l0_result")
@@ -128,7 +128,7 @@ class TestPipelineEntityLinking:
 
     def test_known_entity_linked(self, loaded_executor):
         """Test that known entities are linked."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         # "TP53" should be in our sample entities
         text = "TP53 is a tumor suppressor gene."
@@ -140,7 +140,7 @@ class TestPipelineEntityLinking:
 
     def test_unknown_entity_not_linked(self, loaded_executor):
         """Test that unknown entities are not linked in L2."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         # Use a completely unknown entity
         text = "XYZABC123 is not a known gene."
@@ -156,7 +156,7 @@ class TestPipelineEdgeCases:
 
     def test_empty_text(self, loaded_executor):
         """Test pipeline with empty text."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         result = loaded_executor.execute(L1Input(texts=[""]))
 
@@ -166,7 +166,7 @@ class TestPipelineEdgeCases:
 
     def test_text_without_entities(self, loaded_executor):
         """Test pipeline with text that has no entities."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         text = "This is a simple text without any special entities."
         result = loaded_executor.execute(L1Input(texts=[text]))
@@ -177,7 +177,7 @@ class TestPipelineEdgeCases:
 
     def test_empty_input_list(self, loaded_executor):
         """Test pipeline with empty input list."""
-        from src.l1.models import L1Input
+        from glinker.l1.models import L1Input
 
         result = loaded_executor.execute(L1Input(texts=[]))
 

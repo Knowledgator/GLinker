@@ -10,11 +10,11 @@ class TestDatabaseRecord:
     """Tests for DatabaseRecord."""
 
     def test_import(self):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
         assert DatabaseRecord is not None
 
     def test_creation(self):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
         record = DatabaseRecord(
             entity_id="MESH:123",
             label="TP53",
@@ -27,7 +27,7 @@ class TestDatabaseRecord:
         assert record.label == "TP53"
 
     def test_default_values(self):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
         record = DatabaseRecord(entity_id="test", label="Test")
         assert record.description == ""
         assert record.entity_type == ""
@@ -35,7 +35,7 @@ class TestDatabaseRecord:
         assert record.aliases == []
 
     def test_embedding_fields(self):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
         record = DatabaseRecord(
             entity_id="test",
             label="Test",
@@ -47,7 +47,7 @@ class TestDatabaseRecord:
         assert record.embedding_model_id == "test-model"
 
     def test_embedding_default_none(self):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
         record = DatabaseRecord(entity_id="test", label="Test")
         assert record.embedding is None
         assert record.embedding_model_id is None
@@ -57,11 +57,11 @@ class TestLayerConfig:
     """Tests for LayerConfig."""
 
     def test_import(self):
-        from src.l2.models import LayerConfig
+        from glinker.l2.models import LayerConfig
         assert LayerConfig is not None
 
     def test_dict_layer_config(self):
-        from src.l2.models import LayerConfig
+        from glinker.l2.models import LayerConfig
         config = LayerConfig(
             type="dict",
             priority=0,
@@ -71,14 +71,14 @@ class TestLayerConfig:
         assert config.priority == 0
 
     def test_default_values(self):
-        from src.l2.models import LayerConfig
+        from glinker.l2.models import LayerConfig
         config = LayerConfig(type="dict", priority=0)
         assert config.write is True
         assert config.ttl == 3600
         assert config.cache_policy == "always"
 
     def test_fuzzy_config(self):
-        from src.l2.models import LayerConfig, FuzzyConfig
+        from glinker.l2.models import LayerConfig, FuzzyConfig
         config = LayerConfig(
             type="dict",
             priority=0,
@@ -92,11 +92,11 @@ class TestEmbeddingConfig:
     """Tests for EmbeddingConfig."""
 
     def test_import(self):
-        from src.l2.models import EmbeddingConfig
+        from glinker.l2.models import EmbeddingConfig
         assert EmbeddingConfig is not None
 
     def test_creation(self):
-        from src.l2.models import EmbeddingConfig
+        from glinker.l2.models import EmbeddingConfig
         config = EmbeddingConfig(
             enabled=True,
             model_name="test-model",
@@ -106,7 +106,7 @@ class TestEmbeddingConfig:
         assert config.dim == 768
 
     def test_default_values(self):
-        from src.l2.models import EmbeddingConfig
+        from glinker.l2.models import EmbeddingConfig
         config = EmbeddingConfig()
         assert config.enabled is False
         assert config.dim == 768
@@ -116,21 +116,21 @@ class TestL2Config:
     """Tests for L2Config."""
 
     def test_import(self):
-        from src.l2.models import L2Config
+        from glinker.l2.models import L2Config
         assert L2Config is not None
 
     def test_creation(self, l2_config_dict):
-        from src.l2.models import L2Config
+        from glinker.l2.models import L2Config
         config = L2Config(**l2_config_dict)
         assert config.max_candidates == 5
 
     def test_layers_list(self, l2_config_dict):
-        from src.l2.models import L2Config
+        from glinker.l2.models import L2Config
         config = L2Config(**l2_config_dict)
         assert len(config.layers) >= 1
 
     def test_embeddings_config(self, l2_config_dict):
-        from src.l2.models import L2Config
+        from glinker.l2.models import L2Config
         config = L2Config(**l2_config_dict)
         assert config.embeddings is not None
         assert config.embeddings.enabled is True
@@ -140,11 +140,11 @@ class TestL2Output:
     """Tests for L2Output."""
 
     def test_import(self):
-        from src.l2.models import L2Output
+        from glinker.l2.models import L2Output
         assert L2Output is not None
 
     def test_creation(self):
-        from src.l2.models import L2Output, DatabaseRecord
+        from glinker.l2.models import L2Output, DatabaseRecord
         record = DatabaseRecord(entity_id="test", label="Test")
         output = L2Output(candidates=[[record]])
         assert len(output.candidates) == 1

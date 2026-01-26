@@ -10,18 +10,18 @@ class TestL0Config:
     """Tests for L0Config."""
 
     def test_import(self):
-        from src.l0.models import L0Config
+        from glinker.l0.models import L0Config
         assert L0Config is not None
 
     def test_creation(self, l0_config_dict):
-        from src.l0.models import L0Config
+        from glinker.l0.models import L0Config
         config = L0Config(**l0_config_dict)
         assert config.min_confidence == 0.0
         assert config.strict_matching is True
         assert config.position_tolerance == 2
 
     def test_default_values(self):
-        from src.l0.models import L0Config
+        from glinker.l0.models import L0Config
         config = L0Config()
         assert config.min_confidence == 0.0
         assert config.include_unlinked is True
@@ -30,7 +30,7 @@ class TestL0Config:
         assert config.position_tolerance == 2
 
     def test_custom_position_tolerance(self):
-        from src.l0.models import L0Config
+        from glinker.l0.models import L0Config
         config = L0Config(position_tolerance=5)
         assert config.position_tolerance == 5
 
@@ -39,14 +39,14 @@ class TestL0Input:
     """Tests for L0Input."""
 
     def test_import(self):
-        from src.l0.models import L0Input
+        from glinker.l0.models import L0Input
         assert L0Input is not None
 
     def test_creation(self):
-        from src.l0.models import L0Input
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l0.models import L0Input
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         l1_entity = L1Entity(
             text="TP53", start=0, end=4, label="GENE",
@@ -72,11 +72,11 @@ class TestLinkedEntity:
     """Tests for LinkedEntity."""
 
     def test_import(self):
-        from src.l0.models import LinkedEntity
+        from glinker.l0.models import LinkedEntity
         assert LinkedEntity is not None
 
     def test_creation(self):
-        from src.l0.models import LinkedEntity
+        from glinker.l0.models import LinkedEntity
         linked = LinkedEntity(
             entity_id="MESH:123",
             label="TP53",
@@ -90,7 +90,7 @@ class TestLinkedEntity:
         assert linked.confidence == 0.95
 
     def test_all_fields_required(self):
-        from src.l0.models import LinkedEntity
+        from glinker.l0.models import LinkedEntity
         with pytest.raises(ValidationError):
             LinkedEntity(entity_id="1", label="TP53")  # Missing confidence, positions
 
@@ -99,11 +99,11 @@ class TestL0Entity:
     """Tests for L0Entity."""
 
     def test_import(self):
-        from src.l0.models import L0Entity
+        from glinker.l0.models import L0Entity
         assert L0Entity is not None
 
     def test_creation_minimal(self):
-        from src.l0.models import L0Entity
+        from glinker.l0.models import L0Entity
         entity = L0Entity(
             mention_text="TP53",
             mention_start=0,
@@ -116,8 +116,8 @@ class TestL0Entity:
         assert entity.linked_entity is None
 
     def test_creation_with_linked(self):
-        from src.l0.models import L0Entity, LinkedEntity
-        from src.l2.models import DatabaseRecord
+        from glinker.l0.models import L0Entity, LinkedEntity
+        from glinker.l2.models import DatabaseRecord
 
         linked = LinkedEntity(
             entity_id="1",
@@ -146,7 +146,7 @@ class TestL0Entity:
         assert entity.pipeline_stage == "l3_linked"
 
     def test_default_candidates(self):
-        from src.l0.models import L0Entity
+        from glinker.l0.models import L0Entity
         entity = L0Entity(
             mention_text="TP53",
             mention_start=0,
@@ -162,11 +162,11 @@ class TestL0Output:
     """Tests for L0Output."""
 
     def test_import(self):
-        from src.l0.models import L0Output
+        from glinker.l0.models import L0Output
         assert L0Output is not None
 
     def test_creation(self):
-        from src.l0.models import L0Output, L0Entity
+        from glinker.l0.models import L0Output, L0Entity
         entity = L0Entity(
             mention_text="TP53",
             mention_start=0,
@@ -178,7 +178,7 @@ class TestL0Output:
         assert len(output.entities) == 1
 
     def test_with_stats(self):
-        from src.l0.models import L0Output
+        from glinker.l0.models import L0Output
         stats = {
             "total_mentions": 5,
             "linked": 3,
@@ -189,6 +189,6 @@ class TestL0Output:
         assert output.stats["linking_rate"] == 0.6
 
     def test_default_stats(self):
-        from src.l0.models import L0Output
+        from glinker.l0.models import L0Output
         output = L0Output(entities=[])
         assert output.stats == {}

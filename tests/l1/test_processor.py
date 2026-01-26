@@ -7,7 +7,7 @@ import pytest
 
 def create_processor(processor_name, config_dict):
     """Helper to create processor from registry."""
-    from src.core.registry import processor_registry
+    from glinker.core.registry import processor_registry
     factory = processor_registry.get(processor_name)
     return factory(config_dict=config_dict, pipeline=None)
 
@@ -33,7 +33,7 @@ class TestL1ProcessorCall:
     """Tests for L1 processor __call__ method."""
 
     def test_call_single_text(self, l1_config_dict):
-        from src.l1.models import L1Output
+        from glinker.l1.models import L1Output
 
         processor = create_processor("l1_batch", l1_config_dict)
         result = processor(texts=["TP53 causes cancer."])
