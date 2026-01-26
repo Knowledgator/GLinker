@@ -1,5 +1,0 @@
-{"id": "CHEM001", "name": "anethole", "aliases": ["anethole", "anethol", "p-propenylanisole"], "description": "Aromatic compound found in anise", "entity_type": "Chemical", "popularity": 1000000}
-{"id": "GENE001", "name": "CCND1", "aliases": ["cyclin D1", "CCND1", "BCL1", "PRAD1"], "description": "Cyclin D1 oncogene", "entity_type": "Gene", "popularity": 5000000}
-{"id": "GENE002", "name": "CDKN1A", "aliases": ["p21", "p21WAF1", "CIP1", "CDKN1A"], "description": "Cyclin-dependent kinase inhibitor 1A", "entity_type": "Gene", "popularity": 3000000}
-{"id": "GENE003", "name": "TP53", "aliases": ["p53", "TP53", "tumor protein p53"], "description": "Tumor suppressor p53", "entity_type": "Gene", "popularity": 8000000}
-{"id": "PROC001", "name": "Epithelial-Mesenchymal Transition", "aliases": ["EMT", "epithelial mesenchymal transition", "EMT markers"], "description": "Cell transition process", "entity_type": "Biological Process", "popularity": 2000000}
