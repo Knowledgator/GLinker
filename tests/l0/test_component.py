@@ -9,7 +9,7 @@ class TestL0ComponentCreation:
     """Tests for L0Component initialization."""
 
     def test_import(self):
-        from src.l0.component import L0Component
+        from glinker.l0.component import L0Component
         assert L0Component is not None
 
     def test_creation(self, l0_component):
@@ -31,9 +31,9 @@ class TestL0ComponentAggregate:
     """Tests for aggregate method."""
 
     def test_aggregate_simple(self, l0_component):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         l1_entities = [[
             L1Entity(text="TP53", start=0, end=4,
@@ -57,8 +57,8 @@ class TestL0ComponentAggregate:
         assert result == []
 
     def test_aggregate_no_l3_match(self, l0_component):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
 
         l1_entities = [[
             L1Entity(text="TP53", start=0, end=4,
@@ -76,7 +76,7 @@ class TestL0ComponentAggregate:
         assert result[0][0].pipeline_stage == "l2_found"
 
     def test_aggregate_l1_only(self, l0_component):
-        from src.l1.models import L1Entity
+        from glinker.l1.models import L1Entity
 
         l1_entities = [[
             L1Entity(text="UNKNOWN", start=0, end=7,
@@ -92,9 +92,9 @@ class TestL0ComponentAggregate:
         assert result[0][0].num_candidates == 0
 
     def test_aggregate_with_template(self, l0_component):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         l1_entities = [[
             L1Entity(text="TP53", start=0, end=4,
@@ -120,9 +120,9 @@ class TestL0ComponentPositionMatching:
     """Tests for position matching with tolerance."""
 
     def test_exact_position_match(self, l0_component):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         l1_entities = [[
             L1Entity(text="TP53", start=0, end=4,
@@ -137,9 +137,9 @@ class TestL0ComponentPositionMatching:
         assert result[0][0].is_linked is True
 
     def test_fuzzy_position_match_within_tolerance(self, l0_component):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         l1_entities = [[
             L1Entity(text="TP53", start=0, end=4,
@@ -156,11 +156,11 @@ class TestL0ComponentPositionMatching:
         assert result[0][0].is_linked is True
 
     def test_fuzzy_position_match_outside_tolerance(self, l0_config_dict):
-        from src.l0.component import L0Component
-        from src.l0.models import L0Config
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l0.component import L0Component
+        from glinker.l0.models import L0Config
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         # Create component with position_tolerance=1
         config = L0Config(**{**l0_config_dict, "position_tolerance": 1})
@@ -185,11 +185,11 @@ class TestL0ComponentStrictMatching:
     """Tests for strict_matching mode."""
 
     def test_strict_matching_enabled(self, l0_config_dict):
-        from src.l0.component import L0Component
-        from src.l0.models import L0Config
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l0.component import L0Component
+        from glinker.l0.models import L0Config
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         config = L0Config(**{**l0_config_dict, "strict_matching": True})
         component = L0Component(config)
@@ -213,11 +213,11 @@ class TestL0ComponentStrictMatching:
         assert result[0][0].mention_text == "TP53"
 
     def test_strict_matching_disabled(self, l0_config_dict):
-        from src.l0.component import L0Component
-        from src.l0.models import L0Config
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l0.component import L0Component
+        from glinker.l0.models import L0Config
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         config = L0Config(**{**l0_config_dict, "strict_matching": False})
         component = L0Component(config)
@@ -246,7 +246,7 @@ class TestL0ComponentFilterByConfidence:
     """Tests for filter_by_confidence method."""
 
     def test_filter_by_confidence(self, l0_component):
-        from src.l0.models import L0Entity, LinkedEntity
+        from glinker.l0.models import L0Entity, LinkedEntity
 
         entities = [[
             L0Entity(
@@ -282,7 +282,7 @@ class TestL0ComponentSortByConfidence:
     """Tests for sort_by_confidence method."""
 
     def test_sort_by_confidence(self, l0_component):
-        from src.l0.models import L0Entity, LinkedEntity
+        from glinker.l0.models import L0Entity, LinkedEntity
 
         entities = [[
             L0Entity(
@@ -314,7 +314,7 @@ class TestL0ComponentCalculateStats:
     """Tests for calculate_stats method."""
 
     def test_calculate_stats(self, l0_component):
-        from src.l0.models import L0Entity, LinkedEntity
+        from glinker.l0.models import L0Entity, LinkedEntity
 
         entities = [[
             L0Entity(

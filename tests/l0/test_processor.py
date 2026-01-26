@@ -7,7 +7,7 @@ import pytest
 
 def create_processor(processor_name, config_dict):
     """Helper to create processor from registry."""
-    from src.core.registry import processor_registry
+    from glinker.core.registry import processor_registry
     factory = processor_registry.get(processor_name)
     return factory(config_dict=config_dict, pipeline=None)
 
@@ -43,10 +43,10 @@ class TestL0ProcessorCall:
     """Tests for L0 processor __call__ method."""
 
     def test_call_with_all_params(self, l0_config_dict):
-        from src.l0.models import L0Output
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l0.models import L0Output
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         processor = create_processor("l0_aggregator", l0_config_dict)
 
@@ -72,10 +72,10 @@ class TestL0ProcessorCall:
         assert "total_mentions" in result.stats
 
     def test_call_with_input_data(self, l0_config_dict):
-        from src.l0.models import L0Output, L0Input
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l0.models import L0Output, L0Input
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         processor = create_processor("l0_aggregator", l0_config_dict)
 
@@ -98,7 +98,7 @@ class TestL0ProcessorCall:
         assert len(result.entities) == 1
 
     def test_call_empty_inputs(self, l0_config_dict):
-        from src.l0.models import L0Output
+        from glinker.l0.models import L0Output
 
         processor = create_processor("l0_aggregator", l0_config_dict)
         result = processor(l1_entities=[], l2_candidates=[], l3_entities=[])
@@ -121,9 +121,9 @@ class TestL0ProcessorWithSchema:
     """Tests for L0 processor with schema template."""
 
     def test_processor_uses_schema_template(self, l0_config_dict):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         processor = create_processor("l0_aggregator", l0_config_dict)
         processor.schema = {"template": "{label}: {description}"}
@@ -157,9 +157,9 @@ class TestL0ProcessorStats:
     """Tests for L0 processor statistics."""
 
     def test_stats_in_output(self, l0_config_dict):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         processor = create_processor("l0_aggregator", l0_config_dict)
 
@@ -191,9 +191,9 @@ class TestL0ProcessorPipeline:
     """Tests for L0 processor pipeline execution."""
 
     def test_pipeline_filter_by_confidence(self, l0_config_dict):
-        from src.l1.models import L1Entity
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         # Set min_confidence to filter low-confidence entities
         config = {**l0_config_dict, "min_confidence": 0.5}

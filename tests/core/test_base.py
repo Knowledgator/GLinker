@@ -10,11 +10,11 @@ class TestBaseConfig:
     """Tests for BaseConfig."""
 
     def test_base_config_import(self):
-        from src.core.base import BaseConfig
+        from glinker.core.base import BaseConfig
         assert BaseConfig is not None
 
     def test_base_config_inheritance(self):
-        from src.core.base import BaseConfig
+        from glinker.core.base import BaseConfig
 
         class CustomConfig(BaseConfig):
             custom_field: str = "default"
@@ -23,7 +23,7 @@ class TestBaseConfig:
         assert config.custom_field == "default"
 
     def test_base_config_validation(self):
-        from src.core.base import BaseConfig
+        from glinker.core.base import BaseConfig
 
         class CustomConfig(BaseConfig):
             required_field: str
@@ -36,7 +36,7 @@ class TestBaseInput:
     """Tests for BaseInput."""
 
     def test_base_input_import(self):
-        from src.core.base import BaseInput
+        from glinker.core.base import BaseInput
         assert BaseInput is not None
 
 
@@ -44,7 +44,7 @@ class TestBaseOutput:
     """Tests for BaseOutput."""
 
     def test_base_output_import(self):
-        from src.core.base import BaseOutput
+        from glinker.core.base import BaseOutput
         assert BaseOutput is not None
 
 
@@ -52,11 +52,11 @@ class TestBaseComponent:
     """Tests for BaseComponent."""
 
     def test_base_component_import(self):
-        from src.core.base import BaseComponent
+        from glinker.core.base import BaseComponent
         assert BaseComponent is not None
 
     def test_base_component_abstract(self):
-        from src.core.base import BaseComponent, BaseConfig
+        from glinker.core.base import BaseComponent, BaseConfig
 
         class TestConfig(BaseConfig):
             pass
@@ -75,11 +75,11 @@ class TestBaseProcessor:
     """Tests for BaseProcessor."""
 
     def test_base_processor_import(self):
-        from src.core.base import BaseProcessor
+        from glinker.core.base import BaseProcessor
         assert BaseProcessor is not None
 
     def test_base_processor_pipeline_validation(self):
-        from src.core.base import BaseProcessor, BaseComponent, BaseConfig
+        from glinker.core.base import BaseProcessor, BaseComponent, BaseConfig
 
         class TestConfig(BaseConfig):
             pass

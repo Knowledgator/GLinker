@@ -7,7 +7,7 @@ import pytest
 
 def create_processor(processor_name, config_dict):
     """Helper to create processor from registry."""
-    from src.core.registry import processor_registry
+    from glinker.core.registry import processor_registry
     factory = processor_registry.get(processor_name)
     return factory(config_dict=config_dict, pipeline=None)
 
@@ -104,7 +104,7 @@ class TestL2ComponentPrecompute:
     def test_precompute_embeddings(self, l2_component, sample_entities):
         """Test precomputing embeddings for all entities."""
         import torch
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         # Load entities first
         records = [
@@ -138,7 +138,7 @@ class TestL2ComponentPrecompute:
     def test_precompute_embeddings_stores_correctly(self, l2_component, sample_entities):
         """Test that precomputed embeddings are stored correctly."""
         import torch
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         # Load entities
         records = [
@@ -200,7 +200,7 @@ class TestPrecomputedEmbeddingUsage:
 
     def test_l3_processor_can_use_precomputed(self, l3_config_dict):
         """Test that L3 processor detects precomputed embeddings."""
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         config = {**l3_config_dict, "use_precomputed_embeddings": True}
         processor = create_processor("l3_batch", config)
@@ -220,8 +220,8 @@ class TestPrecomputedEmbeddingUsage:
 
     def test_l3_processor_fallback_without_embeddings(self, l3_config_dict):
         """Test that L3 falls back when no embeddings available."""
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Output
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Output
 
         config = {**l3_config_dict, "use_precomputed_embeddings": True}
         processor = create_processor("l3_batch", config)

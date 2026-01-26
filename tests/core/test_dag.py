@@ -9,35 +9,35 @@ class TestPipeContext:
     """Tests for PipeContext."""
 
     def test_context_import(self):
-        from src.core.dag import PipeContext
+        from glinker.core.dag import PipeContext
         assert PipeContext is not None
 
     def test_context_creation(self):
-        from src.core.dag import PipeContext
+        from glinker.core.dag import PipeContext
         ctx = PipeContext()
         assert ctx is not None
 
     def test_context_set_get(self):
-        from src.core.dag import PipeContext
+        from glinker.core.dag import PipeContext
         ctx = PipeContext()
         ctx.set("key1", {"value": 123})
         result = ctx.get("key1")
         assert result["value"] == 123
 
     def test_context_get_nonexistent(self):
-        from src.core.dag import PipeContext
+        from glinker.core.dag import PipeContext
         ctx = PipeContext()
         result = ctx.get("nonexistent")
         assert result is None
 
     def test_context_pipeline_input(self):
-        from src.core.dag import PipeContext
+        from glinker.core.dag import PipeContext
         ctx = PipeContext(pipeline_input={"texts": ["hello"]})
         input_data = ctx.get("$input")
         assert input_data["texts"] == ["hello"]
 
     def test_context_multiple_keys(self):
-        from src.core.dag import PipeContext
+        from glinker.core.dag import PipeContext
         ctx = PipeContext()
         ctx.set("a", 1)
         ctx.set("b", 2)
@@ -51,18 +51,18 @@ class TestFieldResolver:
     """Tests for FieldResolver."""
 
     def test_resolver_import(self):
-        from src.core.dag import FieldResolver
+        from glinker.core.dag import FieldResolver
         assert FieldResolver is not None
 
     def test_resolve_simple_field(self):
-        from src.core.dag import FieldResolver, PipeContext, InputConfig
+        from glinker.core.dag import FieldResolver, PipeContext, InputConfig
         ctx = PipeContext(pipeline_input={"texts": ["hello", "world"]})
         config = InputConfig(source="$input", fields="texts")
         result = FieldResolver.resolve(ctx, config)
         assert result == ["hello", "world"]
 
     def test_resolve_nested_field(self):
-        from src.core.dag import FieldResolver, PipeContext, InputConfig
+        from glinker.core.dag import FieldResolver, PipeContext, InputConfig
         ctx = PipeContext()
         ctx.set("result", {"entities": [{"text": "TP53"}]})
         config = InputConfig(source="result", fields="entities")
@@ -70,7 +70,7 @@ class TestFieldResolver:
         assert result == [{"text": "TP53"}]
 
     def test_resolve_array_index(self):
-        from src.core.dag import FieldResolver, PipeContext, InputConfig
+        from glinker.core.dag import FieldResolver, PipeContext, InputConfig
         ctx = PipeContext()
         ctx.set("data", {"items": ["a", "b", "c"]})
         config = InputConfig(source="data", fields="items[0]")
@@ -78,7 +78,7 @@ class TestFieldResolver:
         assert result == "a"
 
     def test_resolve_array_star(self):
-        from src.core.dag import FieldResolver, PipeContext, InputConfig
+        from glinker.core.dag import FieldResolver, PipeContext, InputConfig
         ctx = PipeContext()
         ctx.set("data", {"items": [{"name": "a"}, {"name": "b"}]})
         config = InputConfig(source="data", fields="items[*].name")
@@ -86,7 +86,7 @@ class TestFieldResolver:
         assert result == ["a", "b"]
 
     def test_resolve_slice(self):
-        from src.core.dag import FieldResolver, PipeContext, InputConfig
+        from glinker.core.dag import FieldResolver, PipeContext, InputConfig
         ctx = PipeContext()
         ctx.set("data", {"items": [1, 2, 3, 4, 5]})
         config = InputConfig(source="data", fields="items[1:3]")
@@ -94,7 +94,7 @@ class TestFieldResolver:
         assert result == [2, 3]
 
     def test_resolve_nested_array_star(self):
-        from src.core.dag import FieldResolver, PipeContext, InputConfig
+        from glinker.core.dag import FieldResolver, PipeContext, InputConfig
         ctx = PipeContext()
         ctx.set("data", {"outer": [[{"x": 1}, {"x": 2}], [{"x": 3}]]})
         config = InputConfig(source="data", fields="outer[*][*].x")
@@ -106,11 +106,11 @@ class TestPipeNode:
     """Tests for PipeNode."""
 
     def test_node_import(self):
-        from src.core.dag import PipeNode
+        from glinker.core.dag import PipeNode
         assert PipeNode is not None
 
     def test_node_creation(self):
-        from src.core.dag import PipeNode
+        from glinker.core.dag import PipeNode
         node = PipeNode(
             id="test",
             processor="l1_batch",
@@ -122,7 +122,7 @@ class TestPipeNode:
         assert node.processor == "l1_batch"
 
     def test_node_with_requires(self):
-        from src.core.dag import PipeNode
+        from glinker.core.dag import PipeNode
         node = PipeNode(
             id="l2",
             processor="l2_chain",
@@ -134,7 +134,7 @@ class TestPipeNode:
         assert "l1" in node.requires
 
     def test_node_with_schema(self):
-        from src.core.dag import PipeNode
+        from glinker.core.dag import PipeNode
         node = PipeNode(
             id="l3",
             processor="l3_batch",
@@ -146,7 +146,7 @@ class TestPipeNode:
         assert node.schema["template"] == "{label}: {description}"
 
     def test_node_default_requires(self):
-        from src.core.dag import PipeNode
+        from glinker.core.dag import PipeNode
         node = PipeNode(
             id="test",
             processor="l1_batch",
@@ -161,21 +161,21 @@ class TestDAGPipeline:
     """Tests for DAGPipeline."""
 
     def test_pipeline_import(self):
-        from src.core.dag import DAGPipeline
+        from glinker.core.dag import DAGPipeline
         assert DAGPipeline is not None
 
     def test_pipeline_creation(self, pipeline_config_dict):
-        from src.core.dag import DAGPipeline
+        from glinker.core.dag import DAGPipeline
         pipeline = DAGPipeline(**pipeline_config_dict)
         assert pipeline.name == "test_pipeline"
 
     def test_pipeline_has_nodes(self, pipeline_config_dict):
-        from src.core.dag import DAGPipeline
+        from glinker.core.dag import DAGPipeline
         pipeline = DAGPipeline(**pipeline_config_dict)
         assert len(pipeline.nodes) == 4
 
     def test_pipeline_node_ids(self, pipeline_config_dict):
-        from src.core.dag import DAGPipeline
+        from glinker.core.dag import DAGPipeline
         pipeline = DAGPipeline(**pipeline_config_dict)
         node_ids = [n.id for n in pipeline.nodes]
         assert "l1" in node_ids
@@ -188,7 +188,7 @@ class TestDAGExecutor:
     """Tests for DAGExecutor."""
 
     def test_executor_import(self):
-        from src.core.dag import DAGExecutor
+        from glinker.core.dag import DAGExecutor
         assert DAGExecutor is not None
 
     def test_executor_has_processors(self, executor):
@@ -223,7 +223,7 @@ class TestDAGExecutor:
         assert l1_idx < l2_idx
 
     def test_execute_returns_context(self, loaded_executor):
-        from src.core.dag import PipeContext
+        from glinker.core.dag import PipeContext
         result = loaded_executor.execute({"texts": ["test"]})
         assert isinstance(result, PipeContext)
 

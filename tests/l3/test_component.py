@@ -9,7 +9,7 @@ class TestL3ComponentCreation:
     """Tests for L3Component initialization."""
 
     def test_import(self):
-        from src.l3.component import L3Component
+        from glinker.l3.component import L3Component
         assert L3Component is not None
 
     def test_creation(self, l3_component):
@@ -56,7 +56,7 @@ class TestL3ComponentPredictEntities:
         assert isinstance(entities, list)
 
     def test_predict_returns_l3entity(self, l3_component):
-        from src.l3.models import L3Entity
+        from glinker.l3.models import L3Entity
         text = "BRCA1 mutations cause breast cancer."
         labels = ["gene", "disease"]
         entities = l3_component.predict_entities(text, labels)
@@ -92,7 +92,7 @@ class TestL3ComponentFilterByScore:
     """Tests for filter_by_score method."""
 
     def test_filter_by_score(self, l3_component):
-        from src.l3.models import L3Entity
+        from glinker.l3.models import L3Entity
         entities = [
             L3Entity(text="A", label="X", start=0, end=1, score=0.9),
             L3Entity(text="B", label="X", start=5, end=6, score=0.4),
@@ -103,7 +103,7 @@ class TestL3ComponentFilterByScore:
         assert all(e.score >= 0.5 for e in filtered)
 
     def test_filter_by_score_default_threshold(self, l3_component):
-        from src.l3.models import L3Entity
+        from glinker.l3.models import L3Entity
         entities = [
             L3Entity(text="A", label="X", start=0, end=1, score=0.9),
             L3Entity(text="B", label="X", start=5, end=6, score=0.1),
@@ -121,7 +121,7 @@ class TestL3ComponentSortByPosition:
     """Tests for sort_by_position method."""
 
     def test_sort_by_position(self, l3_component):
-        from src.l3.models import L3Entity
+        from glinker.l3.models import L3Entity
         entities = [
             L3Entity(text="C", label="X", start=20, end=21, score=0.9),
             L3Entity(text="A", label="X", start=0, end=1, score=0.8),
@@ -141,7 +141,7 @@ class TestL3ComponentDeduplicate:
     """Tests for deduplicate_entities method."""
 
     def test_deduplicate(self, l3_component):
-        from src.l3.models import L3Entity
+        from glinker.l3.models import L3Entity
         entities = [
             L3Entity(text="TP53", label="gene", start=0, end=4, score=0.9),
             L3Entity(text="TP53", label="gene", start=0, end=4, score=0.85),
@@ -151,7 +151,7 @@ class TestL3ComponentDeduplicate:
         assert len(deduped) == 2
 
     def test_deduplicate_keeps_first(self, l3_component):
-        from src.l3.models import L3Entity
+        from glinker.l3.models import L3Entity
         entities = [
             L3Entity(text="TP53", label="gene", start=0, end=4, score=0.9),
             L3Entity(text="TP53", label="gene", start=0, end=4, score=0.5),

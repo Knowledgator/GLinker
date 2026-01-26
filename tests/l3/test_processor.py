@@ -7,7 +7,7 @@ import pytest
 
 def create_processor(processor_name, config_dict):
     """Helper to create processor from registry."""
-    from src.core.registry import processor_registry
+    from glinker.core.registry import processor_registry
     factory = processor_registry.get(processor_name)
     return factory(config_dict=config_dict, pipeline=None)
 
@@ -37,8 +37,8 @@ class TestL3ProcessorCall:
     """Tests for L3 processor __call__ method."""
 
     def test_call_with_texts_and_candidates(self, l3_config_dict):
-        from src.l3.models import L3Output
-        from src.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Output
+        from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
 
@@ -57,7 +57,7 @@ class TestL3ProcessorCall:
         assert len(result.entities) == 1
 
     def test_call_empty_texts(self, l3_config_dict):
-        from src.l3.models import L3Output
+        from glinker.l3.models import L3Output
 
         processor = create_processor("l3_batch", l3_config_dict)
         result = processor(texts=[], candidates=[])
@@ -66,7 +66,7 @@ class TestL3ProcessorCall:
         assert result.entities == []
 
     def test_call_empty_candidates(self, l3_config_dict):
-        from src.l3.models import L3Output
+        from glinker.l3.models import L3Output
 
         processor = create_processor("l3_batch", l3_config_dict)
         result = processor(texts=["Some text"], candidates=[[]])
@@ -79,7 +79,7 @@ class TestL3ProcessorLabelCreation:
     """Tests for label creation methods."""
 
     def test_extract_label_from_record(self, l3_config_dict):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
         record = DatabaseRecord(entity_id="1", label="TP53", description="A gene")
@@ -93,7 +93,7 @@ class TestL3ProcessorLabelCreation:
         assert label == "simple_label"
 
     def test_create_gliner_labels_with_template(self, l3_config_dict):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
         processor.schema = {"template": "{label}: {description}"}
@@ -111,7 +111,7 @@ class TestL3ProcessorLabelCreation:
         assert len(mapping) == 2
 
     def test_create_gliner_labels_deduplication(self, l3_config_dict):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
         processor.schema = {"template": "{label}"}
@@ -131,8 +131,8 @@ class TestL3ProcessorRanking:
     """Tests for entity ranking."""
 
     def test_rank_entities(self, l3_config_dict):
-        from src.l2.models import DatabaseRecord
-        from src.l3.models import L3Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
 
         processor = create_processor("l3_batch", l3_config_dict)
         processor.schema = {
@@ -163,7 +163,7 @@ class TestL3ProcessorPrecomputed:
     """Tests for precomputed embeddings usage."""
 
     def test_can_use_precomputed_no_embeddings(self, l3_config_dict):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
 
@@ -175,7 +175,7 @@ class TestL3ProcessorPrecomputed:
         assert result is False
 
     def test_can_use_precomputed_with_embeddings(self, l3_config_dict):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
 
@@ -192,7 +192,7 @@ class TestL3ProcessorPrecomputed:
         assert result is True
 
     def test_can_use_precomputed_model_mismatch(self, l3_config_dict):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
 

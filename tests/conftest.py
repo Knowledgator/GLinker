@@ -124,14 +124,14 @@ def l1_config_dict() -> Dict[str, Any]:
 @pytest.fixture
 def l1_config(l1_config_dict):
     """L1Config instance."""
-    from src.l1.models import L1Config
+    from glinker.l1.models import L1Config
     return L1Config(**l1_config_dict)
 
 
 @pytest.fixture
 def l1_component(l1_config):
     """L1Component instance."""
-    from src.l1.component import L1Component
+    from glinker.l1.component import L1Component
     return L1Component(l1_config)
 
 
@@ -184,22 +184,22 @@ def l2_config_dict(l2_layer_config_dict) -> Dict[str, Any]:
 @pytest.fixture
 def l2_config(l2_config_dict):
     """L2Config instance."""
-    from src.l2.models import L2Config
+    from glinker.l2.models import L2Config
     return L2Config(**l2_config_dict)
 
 
 @pytest.fixture
 def l2_component(l2_config):
     """L2 DatabaseChainComponent instance."""
-    from src.l2.component import DatabaseChainComponent
+    from glinker.l2.component import DatabaseChainComponent
     return DatabaseChainComponent(l2_config)
 
 
 @pytest.fixture
 def dict_layer(l2_layer_config_dict):
     """DictLayer instance."""
-    from src.l2.component import DictLayer
-    from src.l2.models import LayerConfig
+    from glinker.l2.component import DictLayer
+    from glinker.l2.models import LayerConfig
     config = LayerConfig(**l2_layer_config_dict)
     return DictLayer(config)
 
@@ -207,7 +207,7 @@ def dict_layer(l2_layer_config_dict):
 @pytest.fixture
 def loaded_dict_layer(dict_layer, sample_entities):
     """DictLayer with loaded entities."""
-    from src.l2.models import DatabaseRecord
+    from glinker.l2.models import DatabaseRecord
     records = [
         DatabaseRecord(
             entity_id=e["id"],
@@ -247,7 +247,7 @@ def l3_config_dict() -> Dict[str, Any]:
 @pytest.fixture
 def l3_config(l3_config_dict):
     """L3Config instance."""
-    from src.l3.models import L3Config
+    from glinker.l3.models import L3Config
     return L3Config(**l3_config_dict)
 
 
@@ -255,8 +255,8 @@ def l3_config(l3_config_dict):
 @pytest.fixture(scope="session")
 def l3_component():
     """L3Component instance (session-scoped for efficiency)."""
-    from src.l3.component import L3Component
-    from src.l3.models import L3Config
+    from glinker.l3.component import L3Component
+    from glinker.l3.models import L3Config
     config = L3Config(
         model_name="BioMike/gliner-deberta-base-v1-post",
         token="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",
@@ -288,14 +288,14 @@ def l0_config_dict() -> Dict[str, Any]:
 @pytest.fixture
 def l0_config(l0_config_dict):
     """L0Config instance."""
-    from src.l0.models import L0Config
+    from glinker.l0.models import L0Config
     return L0Config(**l0_config_dict)
 
 
 @pytest.fixture
 def l0_component(l0_config):
     """L0Component instance."""
-    from src.l0.component import L0Component
+    from glinker.l0.component import L0Component
     return L0Component(l0_config)
 
 
@@ -389,7 +389,7 @@ def pipeline_config_dict() -> Dict[str, Any]:
 @pytest.fixture(scope="session")
 def executor():
     """DAGExecutor instance (session-scoped)."""
-    from src.core.factory import ProcessorFactory
+    from glinker.core.factory import ProcessorFactory
 
     config = {
         "name": "test_pipeline",

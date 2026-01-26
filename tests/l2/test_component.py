@@ -9,7 +9,7 @@ class TestDictLayer:
     """Tests for DictLayer (in-memory database layer)."""
 
     def test_import(self):
-        from src.l2.component import DictLayer
+        from glinker.l2.component import DictLayer
         assert DictLayer is not None
 
     def test_creation(self, dict_layer):
@@ -19,7 +19,7 @@ class TestDictLayer:
         assert dict_layer.is_available() is True
 
     def test_load_bulk(self, dict_layer, sample_entities):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         records = [
             DatabaseRecord(
@@ -93,7 +93,7 @@ class TestDatabaseChainComponent:
     """Tests for DatabaseChainComponent."""
 
     def test_import(self):
-        from src.l2.component import DatabaseChainComponent
+        from glinker.l2.component import DatabaseChainComponent
         assert DatabaseChainComponent is not None
 
     def test_creation(self, l2_component):
@@ -110,7 +110,7 @@ class TestDatabaseChainComponent:
         assert "filter_by_popularity" in methods
 
     def test_search(self, l2_component, sample_entities):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         # Load entities first
         records = [
@@ -130,7 +130,7 @@ class TestDatabaseChainComponent:
         assert len(results) >= 1
 
     def test_search_multiple(self, l2_component, sample_entities):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
 
         records = [
             DatabaseRecord(
@@ -162,7 +162,7 @@ class TestDatabaseChainComponentPrecompute:
         assert hasattr(l2_component, 'precompute_embeddings')
 
     def test_precompute_embeddings(self, l2_component, sample_entities):
-        from src.l2.models import DatabaseRecord
+        from glinker.l2.models import DatabaseRecord
         import torch
 
         # Load entities
