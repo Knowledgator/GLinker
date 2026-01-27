@@ -25,6 +25,8 @@ from .dag import (
     DAGExecutor
 )
 
+from .builders import ConfigBuilder
+
 __all__ = [
     'BaseConfig',
     'BaseInput',
@@ -34,13 +36,13 @@ __all__ = [
     'ConfigT',
     'InputT',
     'OutputT',
-    
+
     'ProcessorRegistry',
     'processor_registry',
-    
+
     'ProcessorFactory',
     'load_yaml',
-    
+
     'InputConfig',
     'OutputConfig',
     'ReshapeConfig',
@@ -49,4 +51,6 @@ __all__ = [
     'FieldResolver',
     'DAGPipeline',
     'DAGExecutor',
+
+    'ConfigBuilder',
 ]

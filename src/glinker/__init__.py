@@ -30,6 +30,7 @@ from glinker.core import (
     FieldResolver,
     DAGPipeline,
     DAGExecutor,
+    ConfigBuilder,
 )
 
 __all__ = [
@@ -50,4 +51,5 @@ __all__ = [
     'FieldResolver',
     'DAGPipeline',
     'DAGExecutor',
+    'ConfigBuilder',
 ]
