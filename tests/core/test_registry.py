@@ -16,9 +16,9 @@ class TestProcessorRegistry:
         from glinker.core.registry import processor_registry
         assert len(processor_registry._registry) > 0
 
-    def test_l1_batch_registered(self):
+    def test_l1_spacy_registered(self):
         from glinker.core.registry import processor_registry
-        assert "l1_batch" in processor_registry._registry
+        assert "l1_spacy" in processor_registry._registry
 
     def test_l2_chain_registered(self):
         from glinker.core.registry import processor_registry
@@ -34,7 +34,7 @@ class TestProcessorRegistry:
 
     def test_create_l1_processor(self, l1_config_dict):
         from glinker.core.registry import processor_registry
-        factory = processor_registry.get("l1_batch")
+        factory = processor_registry.get("l1_spacy")
         processor = factory(config_dict=l1_config_dict, pipeline=None)
         assert processor is not None
 
@@ -71,5 +71,5 @@ class TestProcessorRegistry:
         from glinker.core.registry import processor_registry
         available = processor_registry.list_available()
         assert isinstance(available, list)
-        assert "l1_batch" in available
+        assert "l1_spacy" in available
         assert "l2_chain" in available

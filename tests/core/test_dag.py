@@ -113,13 +113,13 @@ class TestPipeNode:
         from glinker.core.dag import PipeNode
         node = PipeNode(
             id="test",
-            processor="l1_batch",
+            processor="l1_spacy",
             inputs={"texts": {"source": "$input", "fields": "texts"}},
             output={"key": "test_result"},
             config={"model": "en_core_sci_sm"}
         )
         assert node.id == "test"
-        assert node.processor == "l1_batch"
+        assert node.processor == "l1_spacy"
 
     def test_node_with_requires(self):
         from glinker.core.dag import PipeNode
@@ -149,7 +149,7 @@ class TestPipeNode:
         from glinker.core.dag import PipeNode
         node = PipeNode(
             id="test",
-            processor="l1_batch",
+            processor="l1_spacy",
             inputs={},
             output={"key": "result"},
             config={}

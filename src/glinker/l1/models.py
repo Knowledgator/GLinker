@@ -1,4 +1,5 @@
 from pydantic import Field
+from typing import List, Optional
 from glinker.core.base import BaseConfig, BaseInput, BaseOutput
 
 
@@ -10,6 +11,24 @@ class L1Config(BaseConfig):
     max_left_context: int = Field(50, description="Maximum left context length")
     min_entity_length: int = Field(2, description="Minimum entity text length")
     include_noun_chunks: bool = Field(False, description="Include noun chunks")
+
+
+class L1GlinerConfig(L1Config):
+    """Configuration for GLiNER-based L1 entity extraction"""
+    model: str = Field(..., description="GLiNER model identifier (overrides spaCy model)")
+    labels: List[str] = Field(..., description="Fixed list of labels for entity extraction")
+    token: Optional[str] = Field(None, description="HuggingFace token")
+    threshold: float = Field(0.3, description="Confidence threshold for entity extraction")
+    flat_ner: bool = Field(True, description="Use flat NER (no nested entities)")
+    multi_label: bool = Field(False, description="Allow multiple labels per entity")
+    use_precomputed_embeddings: bool = Field(
+        False,
+        description="Use precomputed label embeddings (BiEncoder only)"
+    )
+    max_length: Optional[int] = Field(
+        None,
+        description="Maximum sequence length for tokenization"
+    )
 
 
 class L1Input(BaseInput):

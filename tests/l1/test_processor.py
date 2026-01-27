@@ -16,16 +16,16 @@ class TestL1ProcessorCreation:
     """Tests for L1 processor initialization."""
 
     def test_create_via_registry(self, l1_config_dict):
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         assert processor is not None
 
     def test_processor_has_component(self, l1_config_dict):
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         assert hasattr(processor, 'component')
         assert processor.component is not None
 
     def test_processor_has_config(self, l1_config_dict):
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         assert hasattr(processor, 'config')
 
 
@@ -35,34 +35,34 @@ class TestL1ProcessorCall:
     def test_call_single_text(self, l1_config_dict):
         from glinker.l1.models import L1Output
 
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         result = processor(texts=["TP53 causes cancer."])
 
         assert isinstance(result, L1Output)
         assert len(result.entities) == 1
 
     def test_call_multiple_texts(self, l1_config_dict):
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         texts = ["TP53 is a gene.", "BRCA1 causes cancer."]
         result = processor(texts=texts)
 
         assert len(result.entities) == 2
 
     def test_call_empty_input(self, l1_config_dict):
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         result = processor(texts=[])
 
         assert result.entities == []
 
     def test_call_empty_text(self, l1_config_dict):
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         result = processor(texts=[""])
 
         assert len(result.entities) == 1
         assert result.entities[0] == []
 
     def test_result_entities_are_lists(self, l1_config_dict):
-        processor = create_processor("l1_batch", l1_config_dict)
+        processor = create_processor("l1_spacy", l1_config_dict)
         result = processor(texts=["TP53 test"])
 
         for text_entities in result.entities:
@@ -74,7 +74,7 @@ class TestL1ProcessorBatching:
 
     def test_batch_size_1(self, l1_config_dict):
         config = {**l1_config_dict, "batch_size": 1}
-        processor = create_processor("l1_batch", config)
+        processor = create_processor("l1_spacy", config)
 
         texts = ["Text 1.", "Text 2.", "Text 3."]
         result = processor(texts=texts)
@@ -83,7 +83,7 @@ class TestL1ProcessorBatching:
 
     def test_large_batch(self, l1_config_dict):
         config = {**l1_config_dict, "batch_size": 100}
-        processor = create_processor("l1_batch", config)
+        processor = create_processor("l1_spacy", config)
 
         texts = [f"Text {i}." for i in range(10)]
         result = processor(texts=texts)
