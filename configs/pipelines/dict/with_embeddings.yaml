@@ -6,7 +6,7 @@ description: "In-memory dict with on-the-fly embedding cache"
 
 nodes:
   - id: "l1"
-    processor: "l1_batch"
+    processor: "l1_spacy"
     inputs:
       texts:
         source: "$input"

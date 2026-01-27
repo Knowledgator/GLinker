@@ -130,9 +130,9 @@ def l1_config(l1_config_dict):
 
 @pytest.fixture
 def l1_component(l1_config):
-    """L1Component instance."""
-    from glinker.l1.component import L1Component
-    return L1Component(l1_config)
+    """L1SpacyComponent instance."""
+    from glinker.l1.component import L1SpacyComponent
+    return L1SpacyComponent(l1_config)
 
 
 # ============================================================
@@ -312,7 +312,7 @@ def pipeline_config_dict() -> Dict[str, Any]:
         "nodes": [
             {
                 "id": "l1",
-                "processor": "l1_batch",
+                "processor": "l1_spacy",
                 "inputs": {"texts": {"source": "$input", "fields": "texts"}},
                 "output": {"key": "l1_result"},
                 "config": {
@@ -396,7 +396,7 @@ def executor():
         "nodes": [
             {
                 "id": "l1",
-                "processor": "l1_batch",
+                "processor": "l1_spacy",
                 "inputs": {"texts": {"source": "$input", "fields": "texts"}},
                 "output": {"key": "l1_result"},
                 "config": {"model": "en_core_sci_sm", "device": "cpu", "batch_size": 1}

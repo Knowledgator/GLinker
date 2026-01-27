@@ -5,12 +5,12 @@ Tests for src/l1/component.py - L1 NER component.
 import pytest
 
 
-class TestL1ComponentCreation:
-    """Tests for L1Component initialization."""
+class TestL1SpacyComponentCreation:
+    """Tests for L1SpacyComponent initialization."""
 
     def test_import(self):
-        from glinker.l1.component import L1Component
-        assert L1Component is not None
+        from glinker.l1.component import L1SpacyComponent
+        assert L1SpacyComponent is not None
 
     def test_creation(self, l1_component):
         assert l1_component is not None
@@ -27,7 +27,7 @@ class TestL1ComponentCreation:
         assert "extract_entities" in methods
 
 
-class TestL1ComponentExtractEntities:
+class TestL1SpacyComponentExtractEntities:
     """Tests for extract_entities method."""
 
     def test_extract_simple(self, l1_component):
@@ -83,15 +83,15 @@ class TestL1ComponentExtractEntities:
             assert entity.text is not None
 
 
-class TestL1ComponentMinEntityLength:
+class TestL1SpacyComponentMinEntityLength:
     """Tests for min_entity_length filtering."""
 
     def test_min_length_filtering(self, l1_config_dict):
-        from glinker.l1.component import L1Component
+        from glinker.l1.component import L1SpacyComponent
         from glinker.l1.models import L1Config
 
         config = L1Config(**{**l1_config_dict, "min_entity_length": 4})
-        component = L1Component(config)
+        component = L1SpacyComponent(config)
 
         text = "BRCA1 and TP53 are genes"
         entities = component.extract_entities(text)
@@ -102,7 +102,7 @@ class TestL1ComponentMinEntityLength:
             assert len(entity.text) >= 4
 
 
-class TestL1ComponentDeduplicate:
+class TestL1SpacyComponentDeduplicate:
     """Tests for deduplicate method."""
 
     def test_deduplicate(self, l1_component):
@@ -138,7 +138,7 @@ class TestL1ComponentDeduplicate:
         assert len(deduped) == 2
 
 
-class TestL1ComponentSortByPosition:
+class TestL1SpacyComponentSortByPosition:
     """Tests for sort_by_position method."""
 
     def test_sort_by_position(self, l1_component):

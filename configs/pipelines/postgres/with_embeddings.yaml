@@ -7,7 +7,7 @@ description: "PostgreSQL with precomputed embeddings"
 
 nodes:
   - id: "l1"
-    processor: "l1_batch"
+    processor: "l1_spacy"
     inputs:
       texts:
         source: "$input"
