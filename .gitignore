@@ -137,6 +137,7 @@ cython_debug/
 
 # IDEs
 .vscode/
+.claude/
 .idea/
 *.swp
 *.swo
@@ -149,5 +150,6 @@ output/
 temp/
 gliner*/
 .gradio/
+.GLiNER/
 # *.jsonl
 # *.json
