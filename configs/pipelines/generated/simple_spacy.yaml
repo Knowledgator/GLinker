@@ -1,0 +1,107 @@
+name: simple_spacy
+description: simple_spacy - auto-generated configuration
+nodes:
+- id: l1
+  processor: l1_spacy
+  inputs:
+    texts:
+      source: $input
+      fields: texts
+  output:
+    key: l1_result
+  config:
+    model: en_core_sci_sm
+    device: cpu
+    batch_size: 32
+    max_right_context: 50
+    max_left_context: 50
+    min_entity_length: 2
+    include_noun_chunks: false
+- id: l2
+  processor: l2_chain
+  requires:
+  - l1
+  inputs:
+    mentions:
+      source: l1_result
+      fields: entities
+  output:
+    key: l2_result
+  schema:
+    template: '{label}: {description}'
+  config:
+    max_candidates: 5
+    min_popularity: 0
+    layers:
+    - type: dict
+      priority: 0
+      write: true
+      search_mode:
+      - exact
+      - fuzzy
+      ttl: 0
+      cache_policy: always
+      field_mapping:
+        entity_id: entity_id
+        label: label
+        aliases: aliases
+        description: description
+        entity_type: entity_type
+        popularity: popularity
+      fuzzy:
+        max_distance: 64
+        min_similarity: 0.6
+        n_gram_size: 3
+        prefix_length: 1
+- id: l3
+  processor: l3_batch
+  requires:
+  - l2
+  inputs:
+    texts:
+      source: $input
+      fields: texts
+    candidates:
+      source: l2_result
+      fields: candidates
+  output:
+    key: l3_result
+  schema:
+    template: '{label}: {description}'
+  config:
+    model_name: BioMike/gliner-deberta-base-v1-post
+    huggingface_token: null
+    device: cpu
+    threshold: 0.5
+    flat_ner: true
+    multi_label: false
+    batch_size: 1
+    use_precomputed_embeddings: false
+    cache_embeddings: false
+    max_length: 512
+- id: l0
+  processor: l0_aggregator
+  requires:
+  - l1
+  - l2
+  - l3
+  inputs:
+    l1_entities:
+      source: l1_result
+      fields: entities
+    l2_candidates:
+      source: l2_result
+      fields: candidates
+    l3_entities:
+      source: l3_result
+      fields: entities
+  output:
+    key: l0_result
+  config:
+    min_confidence: 0.0
+    include_unlinked: true
+    return_all_candidates: false
+    strict_matching: true
+    position_tolerance: 2
+  schema:
+    template: '{label}: {description}'

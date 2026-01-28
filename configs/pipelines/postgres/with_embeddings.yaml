@@ -81,7 +81,7 @@ nodes:
       template: "{label}: {description}"
     config:
       model_name: "BioMike/gliner-deberta-base-v1-post"
-      huggingface_token: "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"
+      huggingface_token: ""hf_""
       device: "cuda"
       threshold: 0.5
       flat_ner: true
