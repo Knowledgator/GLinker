@@ -232,7 +232,7 @@ def l3_config_dict() -> Dict[str, Any]:
     """L3 processor configuration dictionary."""
     return {
         "model_name": "BioMike/gliner-deberta-base-v1-post",
-        "huggingface_token": ""hf_"",
+        "huggingface_token": "hf_",
         "device": "cpu",
         "threshold": 0.3,
         "flat_ner": True,
@@ -259,7 +259,7 @@ def l3_component():
     from glinker.l3.models import L3Config
     config = L3Config(
         model_name="BioMike/gliner-deberta-base-v1-post",
-        token=""hf_"",
+        token="hf_",
         device="cpu",
         threshold=0.3,
         flat_ner=True,
@@ -358,7 +358,7 @@ def pipeline_config_dict() -> Dict[str, Any]:
                 "schema": {"template": "{label}: {description}"},
                 "config": {
                     "model_name": "BioMike/gliner-deberta-base-v1-post",
-                    "huggingface_token": ""hf_"",
+                    "huggingface_token": "hf_",
                     "device": "cpu",
                     "threshold": 0.3,
                     "max_length": 512
@@ -432,7 +432,7 @@ def executor():
                 "schema": {"template": "{label}: {description}"},
                 "config": {
                     "model_name": "BioMike/gliner-deberta-base-v1-post",
-                    "huggingface_token": ""hf_"",
+                    "huggingface_token": "hf_",
                     "device": "cpu", "threshold": 0.3, "max_length": 512
                 }
             },
