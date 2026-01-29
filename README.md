@@ -1,5 +1,6 @@
 # GLiNKER - Entity Linking Framework
-
+![alt text](logo/header.png)
+<!-- ![alt text](image-1.png) -->
 > A modular, production-ready entity linking framework combining NER, multi-layer database search, and neural entity disambiguation.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -7,9 +8,7 @@
 [![PyPI version](https://badge.fury.io/py/glinker.svg)](https://pypi.org/project/glinker/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXX)
 ## Overview
-
 GLiNKER is a 4-layer entity linking pipeline that transforms raw text into structured, disambiguated entity mentions. It's designed for:
-
 - **Production use**: Multi-layer caching (Redis → Elasticsearch → PostgreSQL)
 - **Research flexibility**: Fully configurable YAML pipelines
 - **Performance**: Embedding precomputation for BiEncoder models
