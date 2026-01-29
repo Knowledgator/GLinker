@@ -1,1 +1,1 @@
-# EntityLinker Tests
+# GLinker Tests

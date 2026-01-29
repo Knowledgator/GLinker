@@ -1,5 +1,5 @@
 """
-Integration tests for the full EntityLinker pipeline.
+Integration tests for the full GLinker pipeline.
 """
 
 import pytest

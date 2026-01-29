@@ -734,7 +734,7 @@ except Exception as e:
 Complete reset (WARNING: deletes all data):
 
 ```bash
-# Stop and remove all EntityLinker containers
+# Stop and remove all GLinker containers
 docker-compose down -v
 
 # Remove volumes
