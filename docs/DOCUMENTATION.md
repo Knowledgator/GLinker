@@ -1004,7 +1004,7 @@ schema:
   schema:
     template: "{label}: {description}"
   config:
-    model_name: "BioMike/gliner-deberta-base-v1-post"
+    model_name: "knowledgator/gliner-linker-large-v1.0"
     device: "cpu"
     threshold: 0.5
     batch_size: 1
@@ -1374,7 +1374,7 @@ class ConfigBuilder:
         def embeddings(
             self,
             enabled: bool = True,
-            model_name: str = "BioMike/gliner-deberta-base-v1-post",
+            model_name: str = "knowledgator/gliner-linker-large-v1.0",
             dim: int = 768,
             precompute_on_load: bool = False
         ) -> ConfigBuilder
@@ -1383,7 +1383,7 @@ class ConfigBuilder:
     class L3Builder:
         def configure(
             self,
-            model: str = "BioMike/gliner-deberta-base-v1-post",
+            model: str = "knowledgator/gliner-linker-large-v1.0",
             token: Optional[str] = None,
             device: str = "cpu",
             threshold: float = 0.5,
@@ -1422,7 +1422,7 @@ from glinker.core.builders import ConfigBuilder
 
 builder = ConfigBuilder(name="simple_pipeline")
 builder.l1.spacy(model="en_core_sci_sm", batch_size=32)
-builder.l3.configure(model="BioMike/gliner-deberta-base-v1-post")
+builder.l3.configure(model="knowledgator/gliner-linker-large-v1.0")
 builder.save("configs/simple.yaml")
 ```
 
@@ -1433,7 +1433,7 @@ builder = ConfigBuilder(name="production_pipeline")
 
 # L1 with GLiNER
 builder.l1.gliner(
-    model="BioMike/gliner-deberta-base-v1-post",
+    model="knowledgator/gliner-linker-large-v1.0",
     labels=["gene", "protein", "disease"],
     threshold=0.3
 )
@@ -1443,11 +1443,11 @@ builder.l2.add("dict", priority=3, fuzzy_similarity=0.6)
 builder.l2.add("redis", priority=2, ttl=3600, host="localhost", port=6379)
 builder.l2.add("elasticsearch", priority=1, hosts=["http://localhost:9200"])
 builder.l2.add("postgres", priority=0, database="entities_db", user="postgres")
-builder.l2.embeddings(enabled=True, model_name="BioMike/gliner-deberta-base-v1-post")
+builder.l2.embeddings(enabled=True, model_name="knowledgator/gliner-linker-large-v1.0")
 
 # L3 with precomputed embeddings
 builder.l3.configure(
-    model="BioMike/gliner-deberta-base-v1-post",
+    model="knowledgator/gliner-linker-large-v1.0",
     threshold=0.5,
     use_precomputed_embeddings=True
 )
@@ -1588,7 +1588,7 @@ nodes:
 
       embeddings:
         enabled: true
-        model_name: "BioMike/gliner-deberta-base-v1-post"
+        model_name: "knowledgator/gliner-linker-large-v1.0"
         dim: 768
         precompute_on_load: false
 
@@ -1608,7 +1608,7 @@ nodes:
     schema:
       template: "{label}: {description}"
     config:
-      model_name: "BioMike/gliner-deberta-base-v1-post"
+      model_name: "knowledgator/gliner-linker-large-v1.0"
       device: "cpu"
       threshold: 0.5
       flat_ner: true
@@ -1787,7 +1787,7 @@ GLiNKER supports **precomputed label embeddings** for BiEncoder GLiNER models, p
   config:
     embeddings:
       enabled: true
-      model_name: "BioMike/gliner-deberta-base-v1-post"
+      model_name: "knowledgator/gliner-linker-large-v1.0"
       dim: 768
       precompute_on_load: false
 ```
@@ -1799,7 +1799,7 @@ GLiNKER supports **precomputed label embeddings** for BiEncoder GLiNER models, p
   schema:
     template: "{label}: {description}"  # MUST match L2 template
   config:
-    model_name: "BioMike/gliner-deberta-base-v1-post"
+    model_name: "knowledgator/gliner-linker-large-v1.0"
     use_precomputed_embeddings: true
     cache_embeddings: false
 ```
@@ -1837,7 +1837,7 @@ def encoder_fn(labels):
 
 # Precompute
 template = "{label}: {description}"
-model_id = "BioMike/gliner-deberta-base-v1-post"
+model_id = "knowledgator/gliner-linker-large-v1.0"
 
 results = l2_processor.component.precompute_embeddings(
     encoder_fn=encoder_fn,
@@ -2182,7 +2182,7 @@ from glinker.l1.models import L1Input
 # Build configuration
 builder = ConfigBuilder(name="simple_pipeline")
 builder.l1.spacy(model="en_core_sci_sm", batch_size=32)
-builder.l3.configure(model="BioMike/gliner-deberta-base-v1-post", threshold=0.5)
+builder.l3.configure(model="knowledgator/gliner-linker-large-v1.0", threshold=0.5)
 builder.set_schema_template("{label}")
 builder.save("simple.yaml")
 
@@ -2226,12 +2226,12 @@ builder.l2.add("redis", priority=2, ttl=3600, host="localhost", port=6379)
 builder.l2.add("postgres", priority=0, database="entities_db", user="postgres", password="postgres")
 builder.l2.embeddings(
     enabled=True,
-    model_name="BioMike/gliner-deberta-base-v1-post",
+    model_name="knowledgator/gliner-linker-large-v1.0",
     dim=768
 )
 
 builder.l3.configure(
-    model="BioMike/gliner-deberta-base-v1-post",
+    model="knowledgator/gliner-linker-large-v1.0",
     threshold=0.5,
     use_precomputed_embeddings=True,
     batch_size=1
@@ -2331,7 +2331,7 @@ config = {
             "output": {"key": "l3_result"},
             "schema": {"template": "{label}"},
             "config": {
-                "model_name": "BioMike/gliner-deberta-base-v1-post",
+                "model_name": "knowledgator/gliner-linker-large-v1.0",
                 "threshold": 0.5
             }
         },

@@ -203,7 +203,7 @@ class ConfigBuilder:
         def embeddings(
             self,
             enabled: bool = True,
-            model_name: str = "BioMike/gliner-deberta-base-v1-post",
+            model_name: str = "knowledgator/gliner-linker-large-v1.0",
             dim: int = 768,
             precompute_on_load: bool = False
         ) -> "ConfigBuilder":
@@ -248,7 +248,7 @@ class ConfigBuilder:
 
         def configure(
             self,
-            model: str = "BioMike/gliner-deberta-base-v1-post",
+            model: str = "knowledgator/gliner-linker-large-v1.0",
             token: Optional[str] = None,
             device: str = "cpu",
             threshold: float = 0.5,

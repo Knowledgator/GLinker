@@ -77,19 +77,19 @@ class TestL1Builder:
         from glinker.core.builders import ConfigBuilder
         builder = ConfigBuilder(name="test")
         builder.l1.gliner(
-            model="urchade/gliner_small-v2.1",
+            model="knowledgator/gliner-bi-base-v2.0",
             labels=["gene", "protein"]
         )
 
         assert builder._l1_type == "l1_gliner"
-        assert builder._l1_config["model"] == "urchade/gliner_small-v2.1"
+        assert builder._l1_config["model"] == "knowledgator/gliner-bi-base-v2.0"
         assert builder._l1_config["labels"] == ["gene", "protein"]
 
     def test_l1_gliner_full_config(self):
         from glinker.core.builders import ConfigBuilder
         builder = ConfigBuilder(name="test")
         builder.l1.gliner(
-            model="urchade/gliner_small-v2.1",
+            model="knowledgator/gliner-bi-base-v2.0",
             labels=["gene", "disease"],
             token="hf_token",
             device="cuda",
@@ -210,7 +210,7 @@ class TestL2Builder:
         builder.l2.embeddings()
 
         assert builder._l2_embeddings["enabled"] is True
-        assert builder._l2_embeddings["model_name"] == "BioMike/gliner-deberta-base-v1-post"
+        assert builder._l2_embeddings["model_name"] == "knowledgator/gliner-linker-large-v1.0"
         assert builder._l2_embeddings["dim"] == 768
 
     def test_l2_embeddings_custom_config(self):
@@ -253,7 +253,7 @@ class TestL3Builder:
         builder = ConfigBuilder(name="test")
         builder.l3.configure()
 
-        assert builder._l3_config["model_name"] == "BioMike/gliner-deberta-base-v1-post"
+        assert builder._l3_config["model_name"] == "knowledgator/gliner-linker-large-v1.0"
         assert builder._l3_config["device"] == "cpu"
         assert builder._l3_config["threshold"] == 0.5
         assert builder._l3_config["use_precomputed_embeddings"] is False
@@ -529,7 +529,7 @@ class TestCompleteExamples:
         from glinker.core.builders import ConfigBuilder
         builder = ConfigBuilder(name="gliner_bio")
         builder.l1.gliner(
-            model="urchade/gliner_small-v2.1",
+            model="knowledgator/gliner-bi-base-v2.0",
             labels=["gene", "protein", "disease"]
         )
         builder.l3.configure()
@@ -542,7 +542,7 @@ class TestCompleteExamples:
         from glinker.core.builders import ConfigBuilder
         builder = ConfigBuilder(name="production")
         builder.l1.gliner(
-            model="urchade/gliner_small-v2.1",
+            model="knowledgator/gliner-bi-base-v2.0",
             labels=["gene", "protein"]
         )
         builder.l2.add("redis", priority=2, ttl=3600)
@@ -558,7 +558,7 @@ class TestCompleteExamples:
         from glinker.core.builders import ConfigBuilder
         builder = ConfigBuilder(name="with_embeddings")
         builder.l1.gliner(
-            model="urchade/gliner_small-v2.1",
+            model="knowledgator/gliner-bi-base-v2.0",
             labels=["gene"],
             use_precomputed_embeddings=True
         )

@@ -174,7 +174,7 @@ def l2_config_dict(l2_layer_config_dict) -> Dict[str, Any]:
         "min_popularity": 0,
         "embeddings": {
             "enabled": True,
-            "model_name": "BioMike/gliner-deberta-base-v1-post",
+            "model_name": "knowledgator/gliner-linker-large-v1.0",
             "dim": 768
         },
         "layers": [l2_layer_config_dict]
@@ -231,7 +231,7 @@ def loaded_dict_layer(dict_layer, sample_entities):
 def l3_config_dict() -> Dict[str, Any]:
     """L3 processor configuration dictionary."""
     return {
-        "model_name": "BioMike/gliner-deberta-base-v1-post",
+        "model_name": "knowledgator/gliner-linker-large-v1.0",
         "huggingface_token": "hf_",
         "device": "cpu",
         "threshold": 0.3,
@@ -258,7 +258,7 @@ def l3_component():
     from glinker.l3.component import L3Component
     from glinker.l3.models import L3Config
     config = L3Config(
-        model_name="BioMike/gliner-deberta-base-v1-post",
+        model_name="knowledgator/gliner-linker-large-v1.0",
         token="hf_",
         device="cpu",
         threshold=0.3,
@@ -357,7 +357,7 @@ def pipeline_config_dict() -> Dict[str, Any]:
                 "output": {"key": "l3_result"},
                 "schema": {"template": "{label}: {description}"},
                 "config": {
-                    "model_name": "BioMike/gliner-deberta-base-v1-post",
+                    "model_name": "knowledgator/gliner-linker-large-v1.0",
                     "huggingface_token": "hf_",
                     "device": "cpu",
                     "threshold": 0.3,
@@ -431,7 +431,7 @@ def executor():
                 "output": {"key": "l3_result"},
                 "schema": {"template": "{label}: {description}"},
                 "config": {
-                    "model_name": "BioMike/gliner-deberta-base-v1-post",
+                    "model_name": "knowledgator/gliner-linker-large-v1.0",
                     "huggingface_token": "hf_",
                     "device": "cpu", "threshold": 0.3, "max_length": 512
                 }

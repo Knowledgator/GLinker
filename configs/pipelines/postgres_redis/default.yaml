@@ -92,8 +92,8 @@ nodes:
     schema:
       template: "{label}: {description}"
     config:
-      model_name: "BioMike/gliner-deberta-base-v1-post"
-      huggingface_token: ""hf_""
+      model_name: "knowledgator/gliner-linker-large-v1.0"
+      huggingface_token: "hf_"
       device: "cuda"
       threshold: 0.5
       flat_ner: true
