@@ -1,15 +1,22 @@
 # GLiNKER - Entity Linking Framework
+<div align="center">
+    <div>
+        <a href="https://arxiv.org/abs/2406.12925"><img src="https://img.shields.io/badge/arXiv-2406.12925-b31b1b.svg" alt="GLiNER-bi-Encoder"></a>
+        <a href="https://discord.gg/HbW9aNJ9"><img alt="Discord" src="https://img.shields.io/discord/1089800235347353640?logo=discord&logoColor=white&label=Discord&color=blue"></a>
+        <a href="https://github.com/Knowledgator/EntityLinker/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Knowledgator/EntityLinker?color=blue"></a>
+        <a href="https://hf.co/collections/knowledgator/gliner-linker"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-yellow" alt="HuggingFace Models"></a>
+        <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+        <a href="https://pypi.org/project/glinker/"><img src="https://badge.fury.io/py/glinker.svg" alt="PyPI version"></a>
+    </div>
+    <br>
+</div>
 
+![alt text](logo/header.png)
+<!-- ![alt text](image-1.png) -->
 > A modular, production-ready entity linking framework combining NER, multi-layer database search, and neural entity disambiguation.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![PyPI version](https://badge.fury.io/py/glinker.svg)](https://pypi.org/project/glinker/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXX)
 ## Overview
-
 GLiNKER is a 4-layer entity linking pipeline that transforms raw text into structured, disambiguated entity mentions. It's designed for:
-
 - **Production use**: Multi-layer caching (Redis → Elasticsearch → PostgreSQL)
 - **Research flexibility**: Fully configurable YAML pipelines
 - **Performance**: Embedding precomputation for BiEncoder models
@@ -28,9 +35,9 @@ linked = gliner_model.disambiguate(candidates)
 from glinker import ConfigBuilder, DAGExecutor
 
 builder = ConfigBuilder(name="biomedical_el")
-builder.l1.gliner(model="urchade/gliner_small-v2.1", labels=["gene", "protein", "disease"])
+builder.l1.gliner(model="knowledgator/gliner-bi-base-v2.0", labels=["gene", "protein", "disease"])
 builder.l2.add("redis", priority=2).add("postgres", priority=0)
-builder.l3.configure(model="BioMike/gliner-deberta-base-v1-post")
+builder.l3.configure(model="knowledgator/gliner-linker-large-v1.0")
 
 executor = DAGExecutor(builder.get_config())
 result = executor.execute({"texts": ["TP53 mutations cause cancer"]})
@@ -58,7 +65,7 @@ from glinker import ConfigBuilder, DAGExecutor
 # 1. Build configuration
 builder = ConfigBuilder(name="demo")
 builder.l1.spacy(model="en_core_sci_sm")
-builder.l3.configure(model="BioMike/gliner-deberta-base-v1-post")
+builder.l3.configure(model="knowledgator/gliner-linker-large-v1.0")
 
 # 2. Create executor
 executor = DAGExecutor(builder.get_config())
@@ -131,43 +138,8 @@ builder.save("config.yaml")
 
 GLiNKER uses a **4-layer pipeline**:
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                     Input: Text                            │
-└────────────────────────────────────────────────────────────┘
-                              ↓
-┌────────────────────────────────────────────────────────────┐
-│  L1: Named Entity Recognition                              │
-│  ────────────────────────────────────────                  │
-│  • spaCy or GLiNER                                         │
-│  • Extracts entity mentions with positions                 │
-│  Output: ["TP53", "breast cancer"]                         │
-└────────────────────────────────────────────────────────────┘
-                              ↓
-┌────────────────────────────────────────────────────────────┐
-│  L2: Candidate Generation                                  │
-│  ────────────────────────────────────────                  │
-│  • Multi-layer search: Redis → ES → PostgreSQL            │
-│  • Exact + fuzzy matching                                  │
-│  Output: Top 5 candidates per mention                      │
-└────────────────────────────────────────────────────────────┘
-                              ↓
-┌────────────────────────────────────────────────────────────┐
-│  L3: Entity Disambiguation                                 │
-│  ────────────────────────────────────────────              │
-│  • GLiNER with BiEncoder support                           │
-│  • Contextual re-ranking                                   │
-│  Output: Best entity + confidence score                    │
-└────────────────────────────────────────────────────────────┘
-                              ↓
-┌────────────────────────────────────────────────────────────┐
-│  L0: Aggregation & Statistics                              │
-│  ────────────────────────────────────────                  │
-│  • Combines L1/L2/L3 outputs                               │
-│  • Calculates linking rate, confidence filtering           │
-│  Output: Final structured entities                         │
-└────────────────────────────────────────────────────────────┘
-```
+![alt text](logo/architecture.png)
+
 
 **Key Concepts:**
 
@@ -181,7 +153,7 @@ GLiNKER uses a **4-layer pipeline**:
 ### Biomedical Text Mining
 ```python
 builder.l1.gliner(
-    model="urchade/gliner_small-v2.1",
+    model="knowledgator/gliner-bi-base-v2.0",
     labels=["gene", "protein", "disease", "drug", "chemical"]
 )
 ```
@@ -195,7 +167,7 @@ builder.l1.spacy(model="en_core_web_lg")
 ### Clinical NLP
 ```python
 builder.l1.gliner(
-    model="urchade/gliner_small-v2.1",
+    model="knowledgator/gliner-bi-base-v2.0",
     labels=["symptom", "diagnosis", "medication", "procedure"]
 )
 ```
@@ -252,7 +224,7 @@ nodes:
   - id: "l3"
     processor: "l3_batch"
     config:
-      model_name: "BioMike/gliner-deberta-base-v1-post"
+      model_name: "knowledgator/gliner-linker-large-v1.0"
 ```
 
 ### Production (Multi-Layer)
@@ -284,7 +256,7 @@ executor.precompute_embeddings(target_layers=["postgres"], batch_size=64)
 **Use in L3:**
 ```python
 builder.l3.configure(
-    model="BioMike/gliner-deberta-base-v1-post",
+    model="knowledgator/gliner-linker-large-v1.0",
     use_precomputed_embeddings=True  # 10-100x faster
 )
 ```
@@ -293,7 +265,7 @@ builder.l3.configure(
 
 ```python
 builder.l3.configure(
-    model="BioMike/gliner-deberta-base-v1-post",
+    model="knowledgator/gliner-linker-large-v1.0",
     cache_embeddings=True  # Cache embeddings as they're computed
 )
 ```
@@ -334,11 +306,26 @@ pytest tests/l2/
 pytest --cov=glinker --cov-report=html
 ```
 
+## Citations
+
+If you find GLiNKER useful in your research, please consider citing our papers:
+
+```bibtex
+@misc{stepanov2024glinermultitaskgeneralistlightweight,
+      title={GLiNER multi-task: Generalist Lightweight Model for Various Information Extraction Tasks}, 
+      author={Ihor Stepanov and Mykhailo Shtopko},
+      year={2024},
+      eprint={2406.12925},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2406.12925}, 
+}
+```
+
 ## Contributing
 
 We welcome contributions! Areas of interest:
 
-- **New NER backends** (Flair, Transformers, custom models)
 - **Database layers** (MongoDB, Neo4j, vector databases)
 - **Performance optimizations**
 - **Documentation improvements**

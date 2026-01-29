@@ -69,7 +69,7 @@ nodes:
   schema:
     template: '{label}: {description}'
   config:
-    model_name: BioMike/gliner-deberta-base-v1-post
+    model_name: knowledgator/gliner-linker-large-v1.0
     huggingface_token: null
     device: cpu
     threshold: 0.5

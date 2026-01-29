@@ -10,7 +10,7 @@ nodes:
   output:
     key: l1_result
   config:
-    model: urchade/gliner_small-v2.1
+    model: knowledgator/gliner-bi-base-v2.0
     labels:
     - gene
     - protein
@@ -64,7 +64,7 @@ nodes:
         min_similarity: 0.5
     embeddings:
       enabled: true
-      model_name: BioMike/gliner-deberta-base-v1-post
+      model_name: knowledgator/gliner-linker-large-v1.0
       dim: 768
       precompute_on_load: false
 - id: l3
@@ -83,7 +83,7 @@ nodes:
   schema:
     template: '{label}: {description}'
   config:
-    model_name: BioMike/gliner-deberta-base-v1-post
+    model_name: knowledgator/gliner-linker-large-v1.0
     huggingface_token: null
     device: cpu
     threshold: 0.5
