@@ -12,7 +12,7 @@ import torch
 # ========== CONFIGURATION ==========
 
 # Default config - on-the-fly caching
-DEFAULT_CONFIG = "configs/pipelines/postgres_redis_elasticsearch/default.yaml"
+DEFAULT_CONFIG = "configs/pipelines/dict/strict_mode.yaml"
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description="Entity Linking Pipeline Demo")
@@ -63,7 +63,7 @@ else:
     cache_msg = "(No embedding caching)"
 
 print("📄 Loading example texts...")
-texts = open('pubmed_texts.txt').readlines()
+texts = open('data/pubmed_texts.txt').readlines()
 import random
 random.seed(42)
 random.shuffle(texts)
