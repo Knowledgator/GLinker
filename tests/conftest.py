@@ -1,5 +1,5 @@
 """
-Pytest configuration and shared fixtures for EntityLinker tests.
+Pytest configuration and shared fixtures for GLinker tests.
 """
 
 import pytest

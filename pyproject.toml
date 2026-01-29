@@ -51,9 +51,9 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Knowledgator/EntityLinker"
-Repository = "https://github.com/Knowledgator/EntityLinker"
-Documentation = "https://github.com/Knowledgator/EntityLinker/blob/main/README.md"
+Homepage = "https://github.com/Knowledgator/GLinker"
+Repository = "https://github.com/Knowledgator/GLinker"
+Documentation = "https://github.com/Knowledgator/GLinker/blob/main/README.md"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

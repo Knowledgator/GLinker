@@ -3,7 +3,7 @@
     <div>
         <a href="https://arxiv.org/abs/2406.12925"><img src="https://img.shields.io/badge/arXiv-2406.12925-b31b1b.svg" alt="GLiNER-bi-Encoder"></a>
         <a href="https://discord.gg/HbW9aNJ9"><img alt="Discord" src="https://img.shields.io/discord/1089800235347353640?logo=discord&logoColor=white&label=Discord&color=blue"></a>
-        <a href="https://github.com/Knowledgator/EntityLinker/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Knowledgator/EntityLinker?color=blue"></a>
+        <a href="https://github.com/Knowledgator/GLinker/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Knowledgator/GLinker?color=blue"></a>
         <a href="https://hf.co/collections/knowledgator/gliner-linker"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-yellow" alt="HuggingFace Models"></a>
         <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
         <a href="https://pypi.org/project/glinker/"><img src="https://badge.fury.io/py/glinker.svg" alt="PyPI version"></a>
@@ -49,8 +49,8 @@ result = executor.execute({"texts": ["TP53 mutations cause cancer"]})
 
 ```bash
 # From source
-git clone https://github.com/Knowledgator/EntityLinker.git
-cd EntityLinker
+git clone https://github.com/Knowledgator/GLinker.git
+cd GLinker
 pip install -e .
 
 # With optional dependencies
@@ -341,7 +341,7 @@ Apache 2.0 License - see [LICENSE](LICENSE) file for details.
 
 ## Contact
 
-- **GitHub**: [Knowledgator/EntityLinker](https://github.com/Knowledgator/EntityLinker)
+- **GitHub**: [Knowledgator/GLinker](https://github.com/Knowledgator/GLinker)
 - **Email**: info@knowledgator.com
 
 ---
