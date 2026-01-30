@@ -47,6 +47,15 @@ result = executor.execute({"texts": ["TP53 mutations cause cancer"]})
 
 ### Installation
 
+#### Install easily using pip:
+
+```bash
+pip install glinker
+```
+
+#### Install from Source
+
+Clone and install directly from GitHub:
 ```bash
 # From source
 git clone https://github.com/Knowledgator/GLinker.git
