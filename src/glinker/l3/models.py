@@ -1,5 +1,5 @@
 from pydantic import Field
-from typing import List, Any
+from typing import Dict, List, Any, Optional
 from glinker.core.base import BaseConfig, BaseInput, BaseOutput
 
 
@@ -39,6 +39,9 @@ class L3Entity(BaseOutput):
     start: int
     end: int
     score: float
+    class_probs: Optional[Dict[str, float]] = Field(
+        None, description="Per-label class probabilities from GLiNER"
+    )
 
 
 class L3Output(BaseOutput):

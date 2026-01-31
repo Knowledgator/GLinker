@@ -161,7 +161,7 @@ class ConfigBuilder:
             # Add database-specific config
             if layer_type == "dict":
                 if fuzzy_similarity is None:
-                    fuzzy_similarity = 0.6
+                    fuzzy_similarity = 0.75
                 layer["fuzzy"] = {
                     "max_distance": 64,
                     "min_similarity": fuzzy_similarity,
@@ -414,7 +414,7 @@ class ConfigBuilder:
                 {
                     "id": "l3",
                     "processor": "l3_batch",
-                    "requires": ["l2"],
+                    "requires": ["l1", "l2"],
                     "inputs": {
                         "texts": {
                             "source": "$input",
@@ -423,6 +423,10 @@ class ConfigBuilder:
                         "candidates": {
                             "source": "l2_result",
                             "fields": "candidates"
+                        },
+                        "l1_entities": {
+                            "source": "l1_result",
+                            "fields": "entities"
                         }
                     },
                     "output": {"key": "l3_result"},

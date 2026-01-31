@@ -27,13 +27,36 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
             ("sort_by_position", {})
         ]
     
+    @staticmethod
+    def _build_input_spans(l1_entities_for_text: List[Any]) -> List[List[dict]]:
+        """Convert L1 entities to GLiNER input_spans format.
+
+        Args:
+            l1_entities_for_text: List of L1Entity objects for a single text
+
+        Returns:
+            List of span dicts with 'start' and 'end' keys,
+            wrapped in an outer list as expected by GLiNER input_spans.
+        """
+        spans = [{"start": e.start, "end": e.end} for e in l1_entities_for_text]
+        return [spans]
+
     def __call__(
         self,
         texts: List[str] = None,
         candidates: List[List[Any]] = None,
+        l1_entities: List[List[Any]] = None,
         input_data: L3Input = None
     ) -> L3Output:
-        """Process texts with candidate labels"""
+        """Process texts with candidate labels
+
+        Args:
+            texts: List of input texts
+            candidates: List of candidate lists per text (from L2)
+            l1_entities: Optional L1 entities per text, used to build input_spans
+                         so L3 predicts on the same spans extracted in L1
+            input_data: Alternative L3Input object
+        """
 
         # Support both direct params and L3Input
         if texts is not None and candidates is not None:
@@ -47,7 +70,13 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
 
         all_entities = []
 
-        for text, text_candidates in zip(texts_to_process, candidates_to_process):
+        for idx, (text, text_candidates) in enumerate(zip(texts_to_process, candidates_to_process)):
+            # Build input_spans from L1 entities if available
+            input_spans = None
+            if l1_entities is not None and idx < len(l1_entities):
+                text_l1 = l1_entities[idx]
+                if text_l1:
+                    input_spans = self._build_input_spans(text_l1)
             # Create labels from candidates
             if self.schema:
                 labels, label_to_candidate = self._create_gliner_labels_with_mapping(text_candidates)
@@ -65,10 +94,12 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
             if use_precomputed:
                 # Get embeddings from candidates
                 embeddings = self._get_embeddings_tensor(text_candidates, labels, label_to_candidate)
-                entities = self.component.predict_with_embeddings(text, labels, embeddings)
+                entities = self.component.predict_with_embeddings(
+                    text, labels, embeddings, input_spans=input_spans
+                )
             else:
                 # Regular prediction
-                entities = self.component.predict_entities(text, labels)
+                entities = self.component.predict_entities(text, labels, input_spans=input_spans)
 
                 # Optionally cache computed embeddings
                 if self.config.cache_embeddings and self.component.supports_precomputed_embeddings:
