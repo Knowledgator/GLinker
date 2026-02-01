@@ -98,6 +98,14 @@ class L0Component(BaseComponent[L0Config]):
             if l3_pos:
                 used_l3_positions.add(l3_pos)
 
+            # Build candidate_scores from L3 class_probs
+            candidate_scores = {}
+            l3_entity = l3_by_position.get(l3_pos) if l3_pos else None
+            if l3_entity and l3_entity.class_probs:
+                candidate_scores = self._build_candidate_scores(
+                    l3_entity.class_probs, l2_candidates, template
+                )
+
             # Determine pipeline stage
             pipeline_stage = self._determine_stage(mention_candidates, linked_entity)
 
@@ -112,6 +120,7 @@ class L0Component(BaseComponent[L0Config]):
                 num_candidates=len(mention_candidates),
                 linked_entity=linked_entity,
                 is_linked=linked_entity is not None,
+                candidate_scores=candidate_scores,
                 pipeline_stage=pipeline_stage
             )
 
@@ -126,6 +135,13 @@ class L0Component(BaseComponent[L0Config]):
                     matched_candidate = self._match_candidate_by_label(
                         l3_entity.label, l2_candidates, template
                     )
+
+                    # Build candidate_scores from class_probs
+                    candidate_scores = {}
+                    if l3_entity.class_probs:
+                        candidate_scores = self._build_candidate_scores(
+                            l3_entity.class_probs, l2_candidates, template
+                        )
 
                     linked = LinkedEntity(
                         entity_id=matched_candidate.entity_id if matched_candidate else "unknown",
@@ -146,6 +162,7 @@ class L0Component(BaseComponent[L0Config]):
                         num_candidates=1 if matched_candidate else 0,
                         linked_entity=linked,
                         is_linked=True,
+                        candidate_scores=candidate_scores,
                         pipeline_stage="l3_only"  # Indicates L3 found it without L1
                     )
                     results.append(l0_entity)
@@ -284,6 +301,30 @@ class L0Component(BaseComponent[L0Config]):
             if abs(l3_start - start) <= tolerance and abs(l3_end - end) <= tolerance:
                 return entity, (l3_start, l3_end)
         return None, None
+
+    def _build_candidate_scores(
+        self,
+        class_probs: Dict[str, float],
+        candidates: List[DatabaseRecord],
+        template: str = "{label}"
+    ) -> Dict[str, float]:
+        """
+        Map L3 class_probs (label -> probability) to candidate entity_ids.
+
+        Args:
+            class_probs: Dict of label -> probability from L3 entity
+            candidates: L2 candidate records
+            template: Schema template used to format labels in L3
+
+        Returns:
+            Dict of entity_id -> probability
+        """
+        scores = {}
+        for label, prob in class_probs.items():
+            matched = self._match_candidate_by_label(label, candidates, template)
+            if matched:
+                scores[matched.entity_id] = prob
+        return scores
 
     def _match_candidate_by_label(
         self,

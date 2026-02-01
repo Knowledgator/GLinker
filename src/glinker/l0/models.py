@@ -1,5 +1,5 @@
 from pydantic import Field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from glinker.core.base import BaseConfig, BaseInput, BaseOutput
 from glinker.l1.models import L1Entity
 from glinker.l2.models import DatabaseRecord
@@ -66,6 +66,10 @@ class L0Entity(BaseOutput):
         description="Linked entity if disambiguation was successful"
     )
     is_linked: bool = Field(False, description="Whether entity was successfully linked")
+    candidate_scores: Dict[str, float] = Field(
+        default_factory=dict,
+        description="L3 class probability per candidate entity_id"
+    )
 
     # Aggregated metadata
     pipeline_stage: str = Field(

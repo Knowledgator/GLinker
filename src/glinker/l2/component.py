@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Union
+from pathlib import Path
 import redis
 import json
 from elasticsearch import Elasticsearch
@@ -1010,66 +1011,105 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
     
     def load_entities(
         self,
-        filepath: str,
+        source: Union[str, Path, List[Dict[str, Any]], Dict[str, Dict[str, Any]]],
         target_layers: List[str] = None,
         batch_size: int = 1000,
         overwrite: bool = False
     ) -> Dict[str, int]:
         """
-        Load entities from JSONL file
-        
-        JSONL format (DatabaseRecord):
-            {"entity_id": "Q1", "label": "Python", "aliases": [...], "popularity": 1000000, ...}
-        
+        Load entities from JSONL file, list of dicts, or dict.
+
+        Accepts:
+          - ``str`` / ``Path``: path to a JSONL file (one DatabaseRecord per line)
+          - ``list[dict]``: each dict has at least ``entity_id`` and ``label``
+          - ``dict[str, dict]``: keys are entity_ids, values are entity data
+
         Args:
-            filepath: path to .jsonl file
+            source: entity data (file path, list, or dict)
             target_layers: ['dict', 'redis', 'elasticsearch', 'postgres'] or None (all writable)
             batch_size: batch size for bulk operations
             overwrite: overwrite existing entities
-        
+
         Returns:
             {'redis': 1500, 'elasticsearch': 1500}
         """
-        print(f"\nLoading entities from {filepath}...")
-        
-        # Parse JSONL
+        if isinstance(source, (str, Path)):
+            entities = self._parse_jsonl(source)
+        elif isinstance(source, dict):
+            entities = [
+                DatabaseRecord(entity_id=eid, **data)
+                if "entity_id" not in data
+                else DatabaseRecord(**data)
+                for eid, data in source.items()
+            ]
+        elif isinstance(source, list):
+            entities = [
+                DatabaseRecord(**e) if isinstance(e, dict) else e
+                for e in source
+            ]
+        else:
+            raise TypeError(f"Expected file path, list, or dict; got {type(source)}")
+
+        return self.load_records(
+            entities,
+            target_layers=target_layers,
+            batch_size=batch_size,
+            overwrite=overwrite,
+        )
+
+    def load_records(
+        self,
+        entities: List[DatabaseRecord],
+        target_layers: List[str] = None,
+        batch_size: int = 1000,
+        overwrite: bool = False,
+    ) -> Dict[str, int]:
+        """
+        Load pre-built DatabaseRecord objects into layers.
+
+        Args:
+            entities: list of DatabaseRecord instances
+            target_layers: layer types to target (None = all writable)
+            batch_size: batch size for bulk operations
+            overwrite: overwrite existing entities
+
+        Returns:
+            Dict of layer_type -> count loaded
+        """
+        # Determine target layers
+        if target_layers is None:
+            target_layers = [l.config.type for l in self.layers if l.write]
+
+        # Load to each layer
+        results = {}
+        for layer in self.layers:
+            if layer.config.type not in target_layers:
+                continue
+
+            if not layer.is_available():
+                continue
+
+            count = layer.load_bulk(entities, overwrite=overwrite, batch_size=batch_size)
+            results[layer.config.type] = count
+
+        return results
+
+    @staticmethod
+    def _parse_jsonl(filepath: Union[str, Path]) -> List[DatabaseRecord]:
+        """Parse JSONL file into DatabaseRecord list."""
         entities = []
         with open(filepath, 'r', encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
                     continue
-                
                 try:
                     data = json.loads(line)
-                    entity = DatabaseRecord(**data)
-                    entities.append(entity)
+                    entities.append(DatabaseRecord(**data))
                 except Exception as e:
                     print(f"[WARN] Line {line_num} parse error: {e}")
                     continue
-        
-        print(f"✓ Loaded {len(entities)} entities from file")
-        
-        # Determine target layers
-        if target_layers is None:
-            target_layers = [l.config.type for l in self.layers if l.write]
-        
-        # Load to each layer
-        results = {}
-        for layer in self.layers:
-            if layer.config.type not in target_layers:
-                continue
-            
-            if not layer.is_available():
-                print(f"[WARN] {layer.config.type} unavailable, skipping")
-                continue
-            
-            print(f"\nLoading to {layer.config.type}...")
-            count = layer.load_bulk(entities, overwrite=overwrite, batch_size=batch_size)
-            results[layer.config.type] = count
-            print(f"✓ Loaded {count} entities")
-        
-        return results
+        return entities
     
     def clear_layers(self, layer_names: List[str] = None):
         """Clear all entities in specified layers"""
@@ -1081,6 +1121,14 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
             layer.clear()
             print(f"✓ Cleared")
     
+    def get_all_entities(self) -> List[DatabaseRecord]:
+        """Get all entities from all available layers (deduplicated)"""
+        all_entities = []
+        for layer in self.layers:
+            if layer.is_available():
+                all_entities.extend(layer.get_all_entities())
+        return self.deduplicate_candidates(all_entities)
+
     def count_entities(self) -> Dict[str, int]:
         """Count entities in each layer"""
         counts = {}

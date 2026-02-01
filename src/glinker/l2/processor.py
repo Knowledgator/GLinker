@@ -60,27 +60,35 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
         ]
     
     def __call__(
-        self, 
+        self,
         mentions: Union[List[str], List[List[Any]], L2Input] = None,
+        texts: List[str] = None,
         structure: List[List[str]] = None,
         input_data: L2Input = None
     ) -> L2Output:
         """
         Process mentions and return candidates
-        
+
         Supports:
         - List[str]: flat list of mention strings
         - List[List[L1Entity]]: nested list of L1Entity objects (one list per text)
         - L2Input: structured input with mentions and structure
+        - mentions=None: return entire entity database (one copy per text)
         """
-        
+
         if input_data is not None:
             mentions = input_data.mentions
             structure = input_data.structure
         elif isinstance(mentions, L2Input):
             structure = mentions.structure
             mentions = mentions.mentions
-        
+
+        # No mentions → return entire database (simple pipeline mode)
+        if mentions is None:
+            all_entities = self.component.get_all_entities()
+            n = len(texts) if texts is not None else 1
+            return L2Output(candidates=[all_entities for _ in range(n)])
+
         # Check if mentions is nested (list of lists - one per text)
         if mentions and isinstance(mentions[0], (list, tuple)):
             # Nested structure: [[entities_text1], [entities_text2], ...]

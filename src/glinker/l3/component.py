@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Optional
 import torch
 from gliner import GLiNER
 from glinker.core.base import BaseComponent
@@ -71,7 +71,8 @@ class L3Component(BaseComponent[L3Config]):
         self,
         text: str,
         labels: List[str],
-        embeddings: torch.Tensor
+        embeddings: torch.Tensor,
+        input_spans: List[List[dict]] = None
     ) -> List[L3Entity]:
         """
         Predict entities using pre-computed label embeddings.
@@ -80,21 +81,30 @@ class L3Component(BaseComponent[L3Config]):
             text: Input text
             labels: List of label strings (for output mapping)
             embeddings: Pre-computed embeddings tensor (num_labels, hidden_size)
+            input_spans: Optional list of span dicts with 'start' and 'end' keys
+                         to constrain prediction to specific spans from L1
 
         Returns:
             List of L3Entity predictions
         """
         if not self.supports_precomputed_embeddings:
             # Fallback to regular prediction
-            return self.predict_entities(text, labels)
+            return self.predict_entities(text, labels, input_spans=input_spans)
+
+        kwargs = dict(
+            threshold=self.config.threshold,
+            flat_ner=self.config.flat_ner,
+            multi_label=self.config.multi_label,
+            return_class_probs=True
+        )
+        if input_spans is not None:
+            kwargs["input_spans"] = input_spans
 
         entities = self.model.predict_with_embeds(
             text,
             embeddings,
             labels,
-            threshold=self.config.threshold,
-            flat_ner=self.config.flat_ner,
-            multi_label=self.config.multi_label
+            **kwargs
         )
 
         return [
@@ -103,32 +113,52 @@ class L3Component(BaseComponent[L3Config]):
                 label=e["label"],
                 start=e["start"],
                 end=e["end"],
-                score=e["score"]
+                score=e["score"],
+                class_probs=e.get("class_probs")
             )
             for e in entities
         ]
-    
-    def predict_entities(self, text: str, labels: List[str]) -> List[L3Entity]:
-        """Predict entities using GLiNER"""
+
+    def predict_entities(
+        self,
+        text: str,
+        labels: List[str],
+        input_spans: List[List[dict]] = None
+    ) -> List[L3Entity]:
+        """Predict entities using GLiNER
+
+        Args:
+            text: Input text
+            labels: List of label strings
+            input_spans: Optional list of span dicts with 'start' and 'end' keys
+                         to constrain prediction to specific spans from L1
+        """
         if not labels:
             return []
-        print(labels)
-        # labels = [label[:75] for label in labels]  # Truncate long labels
+
+        kwargs = dict(
+            threshold=self.config.threshold,
+            flat_ner=self.config.flat_ner,
+            multi_label=self.config.multi_label,
+            return_class_probs=True
+        )
+        if input_spans is not None:
+            kwargs["input_spans"] = input_spans
+
         entities = self.model.predict_entities(
             text,
             labels,
-            threshold=self.config.threshold,
-            flat_ner=self.config.flat_ner,
-            multi_label=self.config.multi_label
+            **kwargs
         )
-        
+
         return [
             L3Entity(
                 text=e["text"],
                 label=e["label"],
                 start=e["start"],
                 end=e["end"],
-                score=e["score"]
+                score=e["score"],
+                class_probs=e.get("class_probs")
             )
             for e in entities
         ]

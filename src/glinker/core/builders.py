@@ -161,7 +161,7 @@ class ConfigBuilder:
             # Add database-specific config
             if layer_type == "dict":
                 if fuzzy_similarity is None:
-                    fuzzy_similarity = 0.6
+                    fuzzy_similarity = 0.75
                 layer["fuzzy"] = {
                     "max_distance": 64,
                     "min_similarity": fuzzy_similarity,
@@ -274,6 +274,43 @@ class ConfigBuilder:
             }
             return self.parent
 
+    class L4Builder:
+        """L4 configuration builder (optional GLiNER reranker with chunking)"""
+
+        def __init__(self, parent):
+            self.parent = parent
+
+        def configure(
+            self,
+            model: str = "knowledgator/gliner-linker-large-v1.0",
+            token: Optional[str] = None,
+            device: str = "cpu",
+            threshold: float = 0.5,
+            flat_ner: bool = True,
+            multi_label: bool = False,
+            max_labels: int = 20,
+            max_length: Optional[int] = 512
+        ) -> "ConfigBuilder":
+            """Configure L4 GLiNER reranker with candidate chunking.
+
+            Args:
+                model: GLiNER model (uni-encoder)
+                threshold: Minimum score for entity predictions
+                max_labels: Maximum candidate labels per inference call.
+                    Candidates exceeding this are split into chunks.
+            """
+            self.parent._l4_config = {
+                "model_name": model,
+                "token": token,
+                "device": device,
+                "threshold": threshold,
+                "flat_ner": flat_ner,
+                "multi_label": multi_label,
+                "max_labels": max_labels,
+                "max_length": max_length
+            }
+            return self.parent
+
     class L0Builder:
         """L0 configuration builder"""
 
@@ -306,6 +343,7 @@ class ConfigBuilder:
         self._l2_layers = []
         self._l2_embeddings = None
         self._l3_config = None
+        self._l4_config = None
         self._l0_config = {
             "min_confidence": 0.0,
             "include_unlinked": True,
@@ -319,6 +357,7 @@ class ConfigBuilder:
         self.l1 = self.L1Builder(self)
         self.l2 = self.L2Builder(self)
         self.l3 = self.L3Builder(self)
+        self.l4 = self.L4Builder(self)
         self.l0 = self.L0Builder(self)
 
     def set_schema_template(self, template: str) -> "ConfigBuilder":
@@ -378,81 +417,119 @@ class ConfigBuilder:
         if self._l2_embeddings:
             l2_config["embeddings"] = self._l2_embeddings
 
+        nodes = [
+            # L1 Node
+            {
+                "id": "l1",
+                "processor": self._l1_type,
+                "inputs": {
+                    "texts": {
+                        "source": "$input",
+                        "fields": "texts"
+                    }
+                },
+                "output": {"key": "l1_result"},
+                "config": self._l1_config
+            },
+            # L2 Node
+            {
+                "id": "l2",
+                "processor": "l2_chain",
+                "requires": ["l1"],
+                "inputs": {
+                    "mentions": {
+                        "source": "l1_result",
+                        "fields": "entities"
+                    }
+                },
+                "output": {"key": "l2_result"},
+                "schema": {"template": self._schema_template},
+                "config": l2_config
+            },
+            # L3 Node
+            {
+                "id": "l3",
+                "processor": "l3_batch",
+                "requires": ["l1", "l2"],
+                "inputs": {
+                    "texts": {
+                        "source": "$input",
+                        "fields": "texts"
+                    },
+                    "candidates": {
+                        "source": "l2_result",
+                        "fields": "candidates"
+                    },
+                    "l1_entities": {
+                        "source": "l1_result",
+                        "fields": "entities"
+                    }
+                },
+                "output": {"key": "l3_result"},
+                "schema": {"template": self._schema_template},
+                "config": self._l3_config
+            },
+        ]
+
+        # Determine which result L0 reads entity predictions from
+        l0_entity_source = "l3_result"
+        l0_requires = ["l1", "l2", "l3"]
+
+        # Optional L4 reranker node
+        if self._l4_config:
+            nodes.append({
+                "id": "l4",
+                "processor": "l4_reranker",
+                "requires": ["l1", "l2", "l3"],
+                "inputs": {
+                    "texts": {
+                        "source": "$input",
+                        "fields": "texts"
+                    },
+                    "candidates": {
+                        "source": "l2_result",
+                        "fields": "candidates"
+                    },
+                    "l1_entities": {
+                        "source": "l1_result",
+                        "fields": "entities"
+                    }
+                },
+                "output": {"key": "l4_result"},
+                "schema": {"template": self._schema_template},
+                "config": self._l4_config
+            })
+            l0_entity_source = "l4_result"
+            l0_requires.append("l4")
+
+        # L0 Node
+        nodes.append({
+            "id": "l0",
+            "processor": "l0_aggregator",
+            "requires": l0_requires,
+            "inputs": {
+                "l1_entities": {
+                    "source": "l1_result",
+                    "fields": "entities"
+                },
+                "l2_candidates": {
+                    "source": "l2_result",
+                    "fields": "candidates"
+                },
+                "l3_entities": {
+                    "source": l0_entity_source,
+                    "fields": "entities"
+                }
+            },
+            "output": {"key": "l0_result"},
+            "config": self._l0_config,
+            "schema": {"template": self._schema_template}
+        })
+
         config = {
             "name": self.name,
             "description": self.description,
-            "nodes": [
-                # L1 Node
-                {
-                    "id": "l1",
-                    "processor": self._l1_type,
-                    "inputs": {
-                        "texts": {
-                            "source": "$input",
-                            "fields": "texts"
-                        }
-                    },
-                    "output": {"key": "l1_result"},
-                    "config": self._l1_config
-                },
-                # L2 Node
-                {
-                    "id": "l2",
-                    "processor": "l2_chain",
-                    "requires": ["l1"],
-                    "inputs": {
-                        "mentions": {
-                            "source": "l1_result",
-                            "fields": "entities"
-                        }
-                    },
-                    "output": {"key": "l2_result"},
-                    "schema": {"template": self._schema_template},
-                    "config": l2_config
-                },
-                # L3 Node
-                {
-                    "id": "l3",
-                    "processor": "l3_batch",
-                    "requires": ["l2"],
-                    "inputs": {
-                        "texts": {
-                            "source": "$input",
-                            "fields": "texts"
-                        },
-                        "candidates": {
-                            "source": "l2_result",
-                            "fields": "candidates"
-                        }
-                    },
-                    "output": {"key": "l3_result"},
-                    "schema": {"template": self._schema_template},
-                    "config": self._l3_config
-                },
-                # L0 Node
-                {
-                    "id": "l0",
-                    "processor": "l0_aggregator",
-                    "requires": ["l1", "l2", "l3"],
-                    "inputs": {
-                        "l1_entities": {
-                            "source": "l1_result",
-                            "fields": "entities"
-                        },
-                        "l2_candidates": {
-                            "source": "l2_result",
-                            "fields": "candidates"
-                        },
-                        "l3_entities": {
-                            "source": "l3_result",
-                            "fields": "entities"
-                        }
-                    },
-                    "output": {"key": "l0_result"},
-                    "config": self._l0_config,
-                    "schema": {"template": self._schema_template}
-                }
-            ]
+            "nodes": nodes
         }
 
         return config
