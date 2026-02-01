@@ -63,11 +63,16 @@ class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):
             l1_entities = input_data.l1_entities
             l2_candidates = input_data.l2_candidates
             l3_entities = input_data.l3_entities
-        elif l1_entities is None or l2_candidates is None or l3_entities is None:
+
+        if l2_candidates is None or l3_entities is None:
             raise ValueError(
-                "Either provide 'l1_entities', 'l2_candidates', 'l3_entities' "
-                "or 'input_data'"
+                "Either provide 'l2_candidates' and 'l3_entities' "
+                "(and optionally 'l1_entities'), or 'input_data'"
             )
+
+        # When L1 is absent (simple pipeline), create empty mention lists
+        if l1_entities is None:
+            l1_entities = [[] for _ in l3_entities]
 
         # Pass schema template to component for matching
         template = self.schema.get('template', '{label}') if self.schema else '{label}'

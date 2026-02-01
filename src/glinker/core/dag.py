@@ -646,40 +646,41 @@ class DAGExecutor:
     
     def load_entities(
         self,
-        filepath: str,
+        source,
         target_layers: List[str] = None,
         batch_size: int = 1000,
         overwrite: bool = False
     ) -> Dict[str, Dict[str, int]]:
         """
         Load entities into database layers
-        
+
         Finds all L2 processors and loads entities into their database layers.
-        
+
         Args:
-            filepath: path to entities.jsonl
+            source: entity data — file path (str/Path), list of dicts, or
+                    dict mapping entity_id to entity data
             target_layers: ['dict', 'redis', 'elasticsearch', 'postgres'] or None (all writable)
             batch_size: batch size for bulk operations
             overwrite: overwrite existing entities
-        
+
         Returns:
             {'l2_node_id': {'redis': 1500, 'elasticsearch': 1500}}
         """
         results = {}
-        
+
         for node_id, processor in self.processors.items():
             if hasattr(processor, 'component') and hasattr(processor.component, 'load_entities'):
                 if self.verbose:
                     logger.info(f"\nLoading entities for node '{node_id}'")
-                
+
                 result = processor.component.load_entities(
-                    filepath=filepath,
+                    source=source,
                     target_layers=target_layers,
                     batch_size=batch_size,
                     overwrite=overwrite
                 )
                 results[node_id] = result
-        
+
         return results
     
     def clear_databases(self, layer_names: List[str] = None) -> Dict[str, bool]:

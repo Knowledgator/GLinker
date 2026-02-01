@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 import yaml
 from .registry import processor_registry
 from .dag import DAGPipeline, DAGExecutor, PipeNode, InputConfig, OutputConfig
@@ -103,5 +104,117 @@ class ProcessorFactory:
             description=config_dict.get('description'),
             nodes=nodes
         )
-        
+
         return DAGExecutor(pipeline, verbose=verbose)
+
+    @staticmethod
+    def create_simple(
+        model_name: str,
+        device: str = "cpu",
+        threshold: float = 0.5,
+        template: str = "{label}",
+        max_length: Optional[int] = 512,
+        token: Optional[str] = None,
+        entities: Optional[Union[str, Path, List[Dict[str, Any]], Dict[str, Dict[str, Any]]]] = None,
+        precompute_embeddings: bool = False,
+        verbose: bool = False,
+    ) -> DAGExecutor:
+        """
+        Create a minimal L2 -> L3 -> L0 pipeline from a model name.
+
+        Skips L1 (mention extraction). L2 serves as an in-memory entity store
+        that returns all loaded entities as candidates. L3 runs GLiNER for
+        entity linking. L0 aggregates in loose mode.
+
+        Args:
+            model_name: HuggingFace model ID or local path.
+            device: Torch device ("cpu", "cuda", "cuda:0", ...).
+            threshold: Minimum score for entity predictions.
+            template: Format string for entity labels (e.g. "{label}: {description}").
+            max_length: Max sequence length for tokenization.
+            token: HuggingFace auth token for gated models.
+            entities: Optional entity data to load immediately. Accepts a file
+                path (str/Path to JSONL), a list of dicts, or a dict mapping
+                entity_id to entity data.
+            precompute_embeddings: If True and *entities* are provided,
+                pre-embed all entity labels after loading (BiEncoder models only).
+            verbose: Enable verbose logging.
+
+        Returns:
+            Configured DAGExecutor ready for ``execute``.
+        """
+        config = {
+            "name": "simple",
+            "description": "Simple pipeline - L3 only with entity database",
+            "nodes": [
+                {
+                    "id": "l2",
+                    "processor": "l2_chain",
+                    "requires": [],
+                    "inputs": {
+                        "texts": {"source": "$input", "fields": "texts"},
+                    },
+                    "output": {"key": "l2_result"},
+                    "schema": {"template": template},
+                    "config": {
+                        "max_candidates": 30,
+                        "min_popularity": 0,
+                        "layers": [
+                            {
+                                "type": "dict",
+                                "priority": 0,
+                                "write": True,
+                                "search_mode": ["exact"],
+                            }
+                        ],
+                    },
+                },
+                {
+                    "id": "l3",
+                    "processor": "l3_batch",
+                    "requires": ["l2"],
+                    "inputs": {
+                        "texts": {"source": "$input", "fields": "texts"},
+                        "candidates": {"source": "l2_result", "fields": "candidates"},
+                    },
+                    "output": {"key": "l3_result"},
+                    "schema": {"template": template},
+                    "config": {
+                        "model_name": model_name,
+                        "device": device,
+                        "threshold": threshold,
+                        "flat_ner": True,
+                        "multi_label": False,
+                        "use_precomputed_embeddings": True,
+                        "cache_embeddings": False,
+                        "max_length": max_length,
+                        "token": token,
+                    },
+                },
+                {
+                    "id": "l0",
+                    "processor": "l0_aggregator",
+                    "requires": ["l2", "l3"],
+                    "inputs": {
+                        "l2_candidates": {"source": "l2_result", "fields": "candidates"},
+                        "l3_entities": {"source": "l3_result", "fields": "entities"},
+                    },
+                    "output": {"key": "l0_result"},
+                    "schema": {"template": template},
+                    "config": {
+                        "strict_matching": False,
+                        "min_confidence": 0.0,
+                        "include_unlinked": True,
+                        "position_tolerance": 2,
+                    },
+                },
+            ],
+        }
+        executor = ProcessorFactory.create_from_dict(config, verbose=verbose)
+
+        if entities is not None:
+            executor.load_entities(entities)
+            if precompute_embeddings:
+                executor.precompute_embeddings()
+
+        return executor

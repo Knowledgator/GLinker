@@ -70,6 +70,38 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
 
         all_entities = []
 
+        # Detect shared candidates (all texts use the same list, e.g. simple pipeline)
+        shared = (
+            len(candidates_to_process) > 1
+            and all(c is candidates_to_process[0] for c in candidates_to_process[1:])
+        )
+
+        # Pre-compute labels & embeddings once when candidates are shared
+        shared_labels = None
+        shared_label_to_candidate = None
+        shared_use_precomputed = False
+        shared_embeddings = None
+
+        if shared:
+            ref_candidates = candidates_to_process[0]
+            if self.schema:
+                shared_labels, shared_label_to_candidate = (
+                    self._create_gliner_labels_with_mapping(ref_candidates)
+                )
+            else:
+                shared_labels = [self._extract_label(c) for c in ref_candidates]
+                shared_label_to_candidate = {}
+
+            shared_use_precomputed = (
+                self.config.use_precomputed_embeddings
+                and self.component.supports_precomputed_embeddings
+                and self._can_use_precomputed(ref_candidates, shared_label_to_candidate)
+            )
+            if shared_use_precomputed:
+                shared_embeddings = self._get_embeddings_tensor(
+                    ref_candidates, shared_labels, shared_label_to_candidate
+                )
+
         for idx, (text, text_candidates) in enumerate(zip(texts_to_process, candidates_to_process)):
             # Build input_spans from L1 entities if available
             input_spans = None
@@ -77,23 +109,30 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                 text_l1 = l1_entities[idx]
                 if text_l1:
                     input_spans = self._build_input_spans(text_l1)
-            # Create labels from candidates
-            if self.schema:
-                labels, label_to_candidate = self._create_gliner_labels_with_mapping(text_candidates)
+
+            if shared:
+                labels = shared_labels
+                label_to_candidate = shared_label_to_candidate
+                use_precomputed = shared_use_precomputed
+                embeddings = shared_embeddings
             else:
-                labels = [self._extract_label(c) for c in text_candidates]
-                label_to_candidate = {}
+                # Create labels from candidates (per-text)
+                if self.schema:
+                    labels, label_to_candidate = self._create_gliner_labels_with_mapping(text_candidates)
+                else:
+                    labels = [self._extract_label(c) for c in text_candidates]
+                    label_to_candidate = {}
 
-            # Check if we can use precomputed embeddings
-            use_precomputed = (
-                self.config.use_precomputed_embeddings
-                and self.component.supports_precomputed_embeddings
-                and self._can_use_precomputed(text_candidates, label_to_candidate)
-            )
+                use_precomputed = (
+                    self.config.use_precomputed_embeddings
+                    and self.component.supports_precomputed_embeddings
+                    and self._can_use_precomputed(text_candidates, label_to_candidate)
+                )
+                embeddings = None
+                if use_precomputed:
+                    embeddings = self._get_embeddings_tensor(text_candidates, labels, label_to_candidate)
 
-            if use_precomputed:
-                # Get embeddings from candidates
-                embeddings = self._get_embeddings_tensor(text_candidates, labels, label_to_candidate)
+            if use_precomputed and embeddings is not None:
                 entities = self.component.predict_with_embeddings(
                     text, labels, embeddings, input_spans=input_spans
                 )
