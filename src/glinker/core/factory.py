@@ -118,6 +118,9 @@ class ProcessorFactory:
         entities: Optional[Union[str, Path, List[Dict[str, Any]], Dict[str, Dict[str, Any]]]] = None,
         precompute_embeddings: bool = False,
         verbose: bool = False,
+        reranker_model: Optional[str] = None,
+        reranker_max_labels: int = 20,
+        reranker_threshold: Optional[float] = None,
     ) -> DAGExecutor:
         """
         Create a minimal L2 -> L3 -> L0 pipeline from a model name.
@@ -125,6 +128,9 @@ class ProcessorFactory:
         Skips L1 (mention extraction). L2 serves as an in-memory entity store
         that returns all loaded entities as candidates. L3 runs GLiNER for
         entity linking. L0 aggregates in loose mode.
+
+        Optionally adds an L4 reranker after L3 for chunked candidate
+        re-evaluation when ``reranker_model`` is provided.
 
         Args:
             model_name: HuggingFace model ID or local path.
@@ -139,76 +145,111 @@ class ProcessorFactory:
             precompute_embeddings: If True and *entities* are provided,
                 pre-embed all entity labels after loading (BiEncoder models only).
             verbose: Enable verbose logging.
+            reranker_model: Optional GLiNER model for L4 reranking. When set,
+                an L4 node is added after L3.
+            reranker_max_labels: Max candidate labels per L4 inference call.
+            reranker_threshold: Score threshold for L4. Defaults to *threshold*.
 
         Returns:
             Configured DAGExecutor ready for ``execute``.
         """
+        nodes = [
+            {
+                "id": "l2",
+                "processor": "l2_chain",
+                "requires": [],
+                "inputs": {
+                    "texts": {"source": "$input", "fields": "texts"},
+                },
+                "output": {"key": "l2_result"},
+                "schema": {"template": template},
+                "config": {
+                    "max_candidates": 30,
+                    "min_popularity": 0,
+                    "layers": [
+                        {
+                            "type": "dict",
+                            "priority": 0,
+                            "write": True,
+                            "search_mode": ["exact"],
+                        }
+                    ],
+                },
+            },
+            {
+                "id": "l3",
+                "processor": "l3_batch",
+                "requires": ["l2"],
+                "inputs": {
+                    "texts": {"source": "$input", "fields": "texts"},
+                    "candidates": {"source": "l2_result", "fields": "candidates"},
+                },
+                "output": {"key": "l3_result"},
+                "schema": {"template": template},
+                "config": {
+                    "model_name": model_name,
+                    "device": device,
+                    "threshold": threshold,
+                    "flat_ner": True,
+                    "multi_label": False,
+                    "use_precomputed_embeddings": True,
+                    "cache_embeddings": False,
+                    "max_length": max_length,
+                    "token": token,
+                },
+            },
+        ]
+
+        l0_entity_source = "l3_result"
+        l0_requires = ["l2", "l3"]
+
+        if reranker_model:
+            nodes.append({
+                "id": "l4",
+                "processor": "l4_reranker",
+                "requires": ["l2", "l3"],
+                "inputs": {
+                    "texts": {"source": "$input", "fields": "texts"},
+                    "candidates": {"source": "l2_result", "fields": "candidates"},
+                },
+                "output": {"key": "l4_result"},
+                "schema": {"template": template},
+                "config": {
+                    "model_name": reranker_model,
+                    "device": device,
+                    "threshold": reranker_threshold if reranker_threshold is not None else threshold,
+                    "flat_ner": True,
+                    "multi_label": False,
+                    "max_labels": reranker_max_labels,
+                    "max_length": max_length,
+                    "token": token,
+                },
+            })
+            l0_entity_source = "l4_result"
+            l0_requires.append("l4")
+
+        nodes.append({
+            "id": "l0",
+            "processor": "l0_aggregator",
+            "requires": l0_requires,
+            "inputs": {
+                "l2_candidates": {"source": "l2_result", "fields": "candidates"},
+                "l3_entities": {"source": l0_entity_source, "fields": "entities"},
+            },
+            "output": {"key": "l0_result"},
+            "schema": {"template": template},
+            "config": {
+                "strict_matching": False,
+                "min_confidence": 0.0,
+                "include_unlinked": True,
+                "position_tolerance": 2,
+            },
+        })
+
         config = {
             "name": "simple",
             "description": "Simple pipeline - L3 only with entity database",
-            "nodes": [
-                {
-                    "id": "l2",
-                    "processor": "l2_chain",
-                    "requires": [],
-                    "inputs": {
-                        "texts": {"source": "$input", "fields": "texts"},
-                    },
-                    "output": {"key": "l2_result"},
-                    "schema": {"template": template},
-                    "config": {
-                        "max_candidates": 30,
-                        "min_popularity": 0,
-                        "layers": [
-                            {
-                                "type": "dict",
-                                "priority": 0,
-                                "write": True,
-                                "search_mode": ["exact"],
-                            }
-                        ],
-                    },
-                },
-                {
-                    "id": "l3",
-                    "processor": "l3_batch",
-                    "requires": ["l2"],
-                    "inputs": {
-                        "texts": {"source": "$input", "fields": "texts"},
-                        "candidates": {"source": "l2_result", "fields": "candidates"},
-                    },
-                    "output": {"key": "l3_result"},
-                    "schema": {"template": template},
-                    "config": {
-                        "model_name": model_name,
-                        "device": device,
-                        "threshold": threshold,
-                        "flat_ner": True,
-                        "multi_label": False,
-                        "use_precomputed_embeddings": True,
-                        "cache_embeddings": False,
-                        "max_length": max_length,
-                        "token": token,
-                    },
-                },
-                {
-                    "id": "l0",
-                    "processor": "l0_aggregator",
-                    "requires": ["l2", "l3"],
-                    "inputs": {
-                        "l2_candidates": {"source": "l2_result", "fields": "candidates"},
-                        "l3_entities": {"source": "l3_result", "fields": "entities"},
-                    },
-                    "output": {"key": "l0_result"},
-                    "schema": {"template": template},
-                    "config": {
-                        "strict_matching": False,
-                        "min_confidence": 0.0,
-                        "include_unlinked": True,
-                        "position_tolerance": 2,
-                    },
-                },
-            ],
+            "nodes": nodes,
         }
         executor = ProcessorFactory.create_from_dict(config, verbose=verbose)
 
