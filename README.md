@@ -86,7 +86,7 @@ Install easily using pip:
 pip install git+https://github.com/Knowledgator/GLinker.git
 ```
 
-Or install from source:
+Or install from source for development purposes:
 
 ```bash
 git clone https://github.com/Knowledgator/GLinker.git
