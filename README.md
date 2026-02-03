@@ -4,7 +4,6 @@
     <div>
         <a href="https://arxiv.org/abs/2406.12925"><img src="https://img.shields.io/badge/arXiv-2406.12925-b31b1b.svg" alt="GLiNER-bi-Encoder"></a>
         <a href="https://discord.gg/HbW9aNJ9"><img alt="Discord" src="https://img.shields.io/discord/1089800235347353640?logo=discord&logoColor=white&label=Discord&color=blue"></a>
-        <a href="https://github.com/Knowledgator/GLinker/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Knowledgator/GLinker?color=blue"></a>
         <a href="https://hf.co/collections/knowledgator/gliner-linker"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-yellow" alt="HuggingFace Models"></a>
         <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
         <a href="https://pypi.org/project/glinker/"><img src="https://badge.fury.io/py/glinker.svg" alt="PyPI version"></a>
@@ -25,7 +24,6 @@ GLiNKER is a modular entity linking pipeline that transforms raw text into struc
 - **Performance**: Embedding precomputation for BiEncoder models
 - **Scalability**: DAG-based execution with batch processing
 
-
 GLiNKER is built around GLiNER — a family of lightweight, generalist models for information extraction. It brings several key advantages to the entity linking pipeline:
 
 - **Zero-shot recognition** — Identify any entity type by simply providing label names. No fine-tuning or annotated data required. Switch from biomedical genes to legal entities by changing a list of strings.
@@ -33,6 +31,13 @@ GLiNKER is built around GLiNER — a family of lightweight, generalist models fo
 - **Efficient BiEncoder support** — BiEncoder variants allow precomputing label embeddings once and reusing them across millions of documents, delivering 10–100× speedups for large-scale linking.
 - **Compact and fast** — Base models are small enough to run on CPU, while larger variants scale with GPU for production throughput.
 - **Open and extensible** — Apache 2.0 licensed models on Hugging Face, easy to swap for domain-specific fine-tunes when needed.
+
+### Models
+| Model | Base Encoder | Use Case |
+|-------|--------------|----------|
+| [gliner-linker-base-v1.0](https://huggingface.co/knowledgator/gliner-linker-base-v1.0) | deberta-v3-base | Balanced performance |
+| [gliner-linker-large-v1.0](https://huggingface.co/knowledgator/gliner-linker-large-v1.0) | deberta-v3-large | Maximum accuracy |
+| [gliner-linker-rerank-v1.0](https://huggingface.co/knowledgator/gliner-linker-rerank-v1.0) | deberta-v3-large | Reranking |
 
 
 ### Traditional vs GLiNKER Approach
