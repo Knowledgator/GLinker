@@ -33,12 +33,25 @@ GLiNKER is built around GLiNER — a family of lightweight, generalist models fo
 - **Open and extensible** — Apache 2.0 licensed models on Hugging Face, easy to swap for domain-specific fine-tunes when needed.
 
 ### Models
+#### NER (L1)
+| Model name | Params | Text Encoder | Label Encoder | Avg. CrossNER | Inference Speed (H100, ex/s) | Inference Speed (pre-computed) |
+|------------|--------|--------------|---------------|---------------|------------------------------|--------------------------------|
+| [gliner-bi-edge-v2.0](https://huggingface.co/knowledgator/gliner-bi-edge-v2.0) | 60 M | [ettin-encoder-32m](https://huggingface.co/jhu-clsp/ettin-encoder-32m) | [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) | 54.0% | 13.64 | 24.62 |
+| [gliner-bi-small-v2.0](https://huggingface.co/knowledgator/gliner-bi-small-v2.0) | 108 M | [ettin-encoder-68m](https://huggingface.co/jhu-clsp/ettin-encoder-68m) | [all-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L12-v2) | 57.2% | 7.99 | 15.22 |
+| [gliner-bi-base-v2.0](https://huggingface.co/knowledgator/gliner-bi-base-v2.0) | 194 M | [ettin-encoder-150m](https://huggingface.co/jhu-clsp/ettin-encoder-150m) | [bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) | 60.3% | 5.91 | 9.51 |
+| [gliner-bi-large-v2.0](https://huggingface.co/knowledgator/gliner-bi-large-v2.0) | 530 M | [ettin-encoder-400m](https://huggingface.co/jhu-clsp/ettin-encoder-400m) | [bge-base-en-v1.5](https://huggingface.co/BAAI/bge-base-en-v1.5) | 61.5% | 2.68 | 3.60 |
+
+
+#### Linking (L3)
 | Model | Base Encoder | Use Case |
 |-------|--------------|----------|
-| [gliner-linker-base-v1.0](https://huggingface.co/knowledgator/gliner-linker-base-v1.0) | deberta-v3-base | Balanced performance |
-| [gliner-linker-large-v1.0](https://huggingface.co/knowledgator/gliner-linker-large-v1.0) | deberta-v3-large | Maximum accuracy |
-| [gliner-linker-rerank-v1.0](https://huggingface.co/knowledgator/gliner-linker-rerank-v1.0) | ettin-encoder-68m | Reranking |
+| [gliner-linker-base-v1.0](https://huggingface.co/knowledgator/gliner-linker-base-v1.0) | deberta-base | Balanced performance |
+| [gliner-linker-large-v1.0](https://huggingface.co/knowledgator/gliner-linker-large-v1.0) | deberta-large | Maximum accuracy |
 
+#### Reranking (L4)
+| Model | Base Encoder | Use Case |
+|-------|--------------|----------|
+| [gliner-linker-rerank-v1.0](https://huggingface.co/knowledgator/gliner-linker-rerank-v1.0) | ettin-encoder-68m | Reranking |
 
 ### Traditional vs GLiNKER Approach
 
