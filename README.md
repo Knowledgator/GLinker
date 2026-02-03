@@ -37,7 +37,7 @@ GLiNKER is built around GLiNER — a family of lightweight, generalist models fo
 |-------|--------------|----------|
 | [gliner-linker-base-v1.0](https://huggingface.co/knowledgator/gliner-linker-base-v1.0) | deberta-v3-base | Balanced performance |
 | [gliner-linker-large-v1.0](https://huggingface.co/knowledgator/gliner-linker-large-v1.0) | deberta-v3-large | Maximum accuracy |
-| [gliner-linker-rerank-v1.0](https://huggingface.co/knowledgator/gliner-linker-rerank-v1.0) | deberta-v3-large | Reranking |
+| [gliner-linker-rerank-v1.0](https://huggingface.co/knowledgator/gliner-linker-rerank-v1.0) | ettin-encoder-68m | Reranking |
 
 
 ### Traditional vs GLiNKER Approach
@@ -274,7 +274,7 @@ builder = ConfigBuilder(name="reranked")
 builder.l1.gliner(model="knowledgator/gliner-bi-base-v2.0", labels=["gene", "disease"])
 builder.l3.configure(model="knowledgator/gliner-linker-base-v1.0")
 builder.l4.configure(
-    model="knowledgator/gliner-multitask-large-v0.5",
+    model="knowledgator/gliner-linker-rerank-v1.0",
     threshold=0.3,
     max_labels=20,
 )
