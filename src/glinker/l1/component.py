@@ -52,6 +52,7 @@ class L1SpacyComponent(BaseComponent[L1Config]):
             
             entities.append(L1Entity(
                 text=ent.text,
+                label=getattr(ent, 'label_', None),  # Safe access in case label_ is missing
                 start=ent.start_char,
                 end=ent.end_char,
                 left_context=left_context,
@@ -115,6 +116,7 @@ class L1SpacyComponent(BaseComponent[L1Config]):
                 
                 entities.append(L1Entity(
                     text=chunk.text,
+                    label="NOUN_CHUNK",
                     start=chunk.start_char,
                     end=chunk.end_char,
                     left_context=left_context,
@@ -238,6 +240,7 @@ class L1GlinerComponent(BaseComponent[L1GlinerConfig]):
 
             entities.append(L1Entity(
                 text=ent["text"],
+                label=ent.get("label", None),  # Safe access in case label is missing
                 start=ent["start"],
                 end=ent["end"],
                 left_context=left_context,

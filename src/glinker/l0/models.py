@@ -48,6 +48,7 @@ class L0Entity(BaseOutput):
     """
     # From L1 - mention detection
     mention_text: str = Field(..., description="Extracted mention text from L1")
+    label: Optional[str] = Field(None, description="Entity label from L1")
     mention_start: int = Field(..., description="Start position in original text")
     mention_end: int = Field(..., description="End position in original text")
     left_context: str = Field(..., description="Left context from L1")
