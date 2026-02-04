@@ -112,6 +112,7 @@ class L0Component(BaseComponent[L0Config]):
             # Create L0Entity
             l0_entity = L0Entity(
                 mention_text=l1_mention.text,
+                label=getattr(l1_mention, 'label', None),  # Safe access in case L1 is skipped
                 mention_start=l1_mention.start,
                 mention_end=l1_mention.end,
                 left_context=l1_mention.left_context,
@@ -410,10 +411,15 @@ class L0Component(BaseComponent[L0Config]):
 
         filtered = []
         for text_entities in entities:
-            filtered_text = [
-                e for e in text_entities
-                if e.linked_entity and e.linked_entity.confidence >= threshold
-            ]
+             # Keep linked entities above threshold OR keep unlinked if configured
+            filtered_text = []
+            for e in text_entities:
+                if e.linked_entity:
+                    if e.linked_entity.confidence >= threshold:
+                        filtered_text.append(e)
+                elif self.config.include_unlinked:
+                    filtered_text.append(e)
+            
             filtered.append(filtered_text)
 
         return filtered
