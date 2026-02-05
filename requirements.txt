@@ -18,3 +18,4 @@ psycopg2-binary>=2.9.9
 # Development dependencies
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+rapidfuzz

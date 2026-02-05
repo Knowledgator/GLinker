@@ -37,6 +37,7 @@ class L1Input(BaseInput):
 
 class L1Entity(BaseOutput):
     text: str = Field(..., description="Extracted mention text")
+    label: Optional[str] = Field(None, description="Entity label/type")
     start: int = Field(..., description="Start position")
     end: int = Field(..., description="End position")
     left_context: str = Field(..., description="Left context")

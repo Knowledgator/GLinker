@@ -1,0 +1,6 @@
+{"entity_id": "P001", "label": "John Doe", "aliases": ["Jonathan Doe", "Mr. Doe", "John H Doe", "John H. Doe", "Jon Doe"], "description": "Patient, Male, 45 years old.", "entity_type": "Patient"}
+{"entity_id": "P002", "label": "Sarah Connor", "aliases": ["S. Connor"], "description": "Patient, Female, 29 years old.", "entity_type": "Patient"}
+{"entity_id": "D001", "label": "Dr. Gregory House", "aliases": ["House", "Greg House", "Dr. House"], "description": "Diagnostician, Dept of Diagnostic Medicine.", "entity_type": "Doctor"}
+{"entity_id": "D002", "label": "Dr. Stephen Strange", "aliases": ["Dr. Strange", "Strange"], "description": "Neurosurgeon.", "entity_type": "Doctor"}
+{"entity_id": "C001", "label": "Diabetes Mellitus", "aliases": ["Type 2 Diabetes", "T2DM"], "description": "Chronic metabolic disease.", "entity_type": "Disease"}
+{"entity_id": "C002", "label": "Hypertension", "aliases": ["High Blood Pressure", "HBP", "high blood pressure"], "description": "Long-term high blood pressure.", "entity_type": "Disease"}
