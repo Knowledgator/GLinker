@@ -101,7 +101,7 @@ result = executor.execute({"texts": ["CRISPR-Cas9 enables precise gene therapy"]
 Install easily using pip:
 
 ```bash
-pip install git+https://github.com/Knowledgator/GLinker.git
+pip install glinker
 ```
 
 Or install from source for development purposes:

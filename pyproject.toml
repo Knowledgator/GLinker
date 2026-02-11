@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "glinker"
-version = "0.1.0"
+version = "0.1.1"
 description = "GLiNKER - A modular multi-layer entity linking framework"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ classifiers = [
 
 dependencies = [
     "spacy>=3.7.0",
-    "gliner @ git+https://github.com/urchade/GLiNER.git@503f85b28939a46827b92d9b9f358b9d58e5e510",
+    "gliner>=0.2.5",
     "torch>=2.0.0",
     "redis>=5.0.0",
     "elasticsearch>=8.11.0",
