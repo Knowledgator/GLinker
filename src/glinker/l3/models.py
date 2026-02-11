@@ -5,7 +5,7 @@ from glinker.core.base import BaseConfig, BaseInput, BaseOutput
 
 class L3Config(BaseConfig):
     model_name: str = Field(...)
-    token: str = Field(None)
+    token: Optional[str] = Field(None)
     device: str = Field("cpu")
     threshold: float = Field(0.5)
     flat_ner: bool = Field(True)
