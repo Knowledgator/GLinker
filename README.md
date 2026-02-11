@@ -163,16 +163,32 @@ GLiNKER offers three ways to create a pipeline, from simplest to most configurab
 `ProcessorFactory.create_simple` builds a **L2 → L3 → L0** pipeline in one call. No NER step — the model links entities directly from the input text against all loaded entities.
 
 ```python
-from glinker import ProcessorFactory
+from glinker import ProcessorFactory                                                                                                                                        
+                                                                                                                                                                              
+entities = [                                                                                                                                                                
+    {
+        "entity_id": "CRISPR",
+        "label": "CRISPR-Cas9",
+        "aliases": ["CRISPR", "Cas9"],
+        "description": "Gene editing technology",
+        "entity_type": "Technology"
+    },
+    {
+        "entity_id": "GENE_THERAPY",
+        "label": "Gene therapy",
+        "aliases": ["gene therapy", "genetic therapy"],
+        "description": "Treatment using genes",
+        "entity_type": "Treatment"
+    }
+]
 
-# Minimal — just a model name
+
 executor = ProcessorFactory.create_simple(
-    model_name="knowledgator/gliner-bi-base-v2.0",
+    model_name="knowledgator/gliner-linker-base-v1.0",
     threshold=0.5,
 )
+executor.load_entities(entities)
 
-# Load entities and run
-executor.load_entities("data/entities.jsonl")
 result = executor.execute({"texts": ["CRISPR-Cas9 enables precise gene therapy."]})
 ```
 
@@ -180,7 +196,7 @@ result = executor.execute({"texts": ["CRISPR-Cas9 enables precise gene therapy."
 
 ```python
 executor = ProcessorFactory.create_simple(
-    model_name="knowledgator/gliner-bi-base-v2.0",
+    model_name="knowledgator/gliner-linker-base-v1.0",
     threshold=0.5,
     entities=[
         {"entity_id": "Q101", "label": "insulin", "description": "Peptide hormone regulating blood glucose"},
@@ -201,9 +217,9 @@ result = executor.execute({
 
 ```python
 executor = ProcessorFactory.create_simple(
-    model_name="knowledgator/gliner-bi-base-v2.0",
+    model_name="knowledgator/gliner-linker-base-v1.0",
     threshold=0.5,
-    reranker_model="knowledgator/gliner-multitask-large-v0.5",
+    reranker_model="knowledgator/gliner-linker-rerank-v1.0",
     reranker_max_labels=20,
     reranker_threshold=0.3,
     entities="data/entities.jsonl",
@@ -215,7 +231,7 @@ executor = ProcessorFactory.create_simple(
 
 ```python
 executor = ProcessorFactory.create_simple(
-    model_name="knowledgator/gliner-bi-base-v2.0",
+    model_name="knowledgator/gliner-linker-base-v1.0",
     template="{label}: {description}",  # L3 sees "BRCA1: Breast cancer type 1 susceptibility protein"
     entities="data/entities.jsonl",
 )
@@ -439,15 +455,15 @@ L4 uses a **uni-encoder GLiNER model** and can be placed after L3 (true rerankin
 ```python
 # Via ConfigBuilder
 builder.l4.configure(
-    model="knowledgator/gliner-multitask-large-v0.5",
+    model="knowledgator/gliner-linker-rerank-v1.0",
     threshold=0.3,
     max_labels=20   # candidates per inference call
 )
 
 # Via create_simple
 executor = ProcessorFactory.create_simple(
-    model_name="knowledgator/gliner-bi-base-v2.0",
-    reranker_model="knowledgator/gliner-multitask-large-v0.5",
+    model_name="knowledgator/gliner-linker-base-v1.0",
+    reranker_model="knowledgator/gliner-linker-rerank-v1.0",
     reranker_max_labels=20,
 )
 ```
@@ -507,7 +523,7 @@ nodes:
     schema:
       template: "{label}"
     config:
-      model_name: "knowledgator/gliner-bi-base-v2.0"
+      model_name: "knowledgator/gliner-linker-base-v1.0"
       device: "cpu"
       threshold: 0.5
       flat_ner: true
@@ -702,7 +718,7 @@ nodes:
     schema:
       template: "{label}: {description}"
     config:
-      model_name: "knowledgator/gliner-multitask-large-v0.5"
+      model_name: "knowledgator/gliner-linker-rerank-v1.0"
       device: "cpu"
       threshold: 0.3
       max_labels: 20          # candidates per inference call
@@ -770,7 +786,7 @@ nodes:
     schema:
       template: "{label}: {description}"
     config:
-      model_name: "knowledgator/gliner-multitask-large-v0.5"
+      model_name: "knowledgator/gliner-linker-rerank-v1.0"
       device: "cpu"
       threshold: 0.5
       max_labels: 20
@@ -854,7 +870,7 @@ executor.precompute_embeddings(batch_size=64)
 
 # Or do both in create_simple
 executor = ProcessorFactory.create_simple(
-    model_name="knowledgator/gliner-bi-base-v2.0",
+    model_name="knowledgator/gliner-linker-base-v1.0",
     entities="data/entities.jsonl",
     precompute_embeddings=True,
 )
