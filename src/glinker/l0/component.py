@@ -26,6 +26,22 @@ class L0Component(BaseComponent[L0Config]):
             "calculate_stats"
         ]
 
+    @staticmethod
+    def _normalize_entity(e) -> L1Entity:
+        """Convert a dict entity to L1Entity, passing through L1Entity objects unchanged."""
+        if isinstance(e, L1Entity):
+            return e
+        if isinstance(e, dict):
+            return L1Entity(
+                text=e["text"],
+                start=e["start"],
+                end=e["end"],
+                label=e.get("label"),
+                left_context=e.get("left_context", ""),
+                right_context=e.get("right_context", ""),
+            )
+        return e
+
     def aggregate(
         self,
         l1_entities: List[List[L1Entity]],
@@ -45,6 +61,12 @@ class L0Component(BaseComponent[L0Config]):
         Returns:
             [[L0Entity, ...], ...] - aggregated entities per text
         """
+        # Normalize dict entities to L1Entity objects
+        l1_entities = [
+            [self._normalize_entity(e) for e in text_ents]
+            for text_ents in l1_entities
+        ]
+
         all_results = []
 
         # Process each text separately

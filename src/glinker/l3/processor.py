@@ -38,7 +38,11 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
             List of span dicts with 'start' and 'end' keys,
             wrapped in an outer list as expected by GLiNER input_spans.
         """
-        spans = [{"start": e.start, "end": e.end} for e in l1_entities_for_text]
+        spans = [
+            {"start": e["start"] if isinstance(e, dict) else e.start,
+             "end": e["end"] if isinstance(e, dict) else e.end}
+            for e in l1_entities_for_text
+        ]
         return [spans]
 
     def __call__(

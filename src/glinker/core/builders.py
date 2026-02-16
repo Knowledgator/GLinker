@@ -375,10 +375,12 @@ class ConfigBuilder:
         return self.build()
 
     def build(self) -> Dict[str, Any]:
-        """Build pipeline configuration dictionary"""
-        if not self._l1_type or not self._l1_config:
-            raise ValueError("L1 configuration is required. Call builder.l1.spacy() or builder.l1.gliner() first.")
+        """Build pipeline configuration dictionary.
 
+        When L1 is configured, builds the full L1 -> L2 -> L3 -> L0 pipeline.
+        When L1 is not configured, builds a linking-only L2 -> L3 -> L0 pipeline
+        that reads entities from ``$input.entities``.
+        """
         if not self._l3_config:
             raise ValueError("L3 configuration is required. Call builder.l3.configure() first.")
 
@@ -416,6 +418,10 @@ class ConfigBuilder:
 
         if self._l2_embeddings:
             l2_config["embeddings"] = self._l2_embeddings
+
+        # Linking-only mode: no L1, entities come from $input
+        if not self._l1_type or not self._l1_config:
+            return self._build_linking_only(l2_config)
 
         nodes = [
             # L1 Node
@@ -533,6 +539,105 @@ class ConfigBuilder:
         }
 
         return config
+
+    def _build_linking_only(self, l2_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Build linking-only topology (L2 -> L3 -> L0) reading entities from $input."""
+        nodes = [
+            {
+                "id": "l2",
+                "processor": "l2_chain",
+                "requires": [],
+                "inputs": {
+                    "mentions": {
+                        "source": "$input",
+                        "fields": "entities"
+                    },
+                    "texts": {
+                        "source": "$input",
+                        "fields": "texts"
+                    }
+                },
+                "output": {"key": "l2_result"},
+                "schema": {"template": self._schema_template},
+                "config": l2_config
+            },
+            {
+                "id": "l3",
+                "processor": "l3_batch",
+                "requires": ["l2"],
+                "inputs": {
+                    "texts": {
+                        "source": "$input",
+                        "fields": "texts"
+                    },
+                    "candidates": {
+                        "source": "l2_result",
+                        "fields": "candidates"
+                    },
+                    "l1_entities": {
+                        "source": "$input",
+                        "fields": "entities"
+                    }
+                },
+                "output": {"key": "l3_result"},
+                "schema": {"template": self._schema_template},
+                "config": self._l3_config
+            },
+        ]
+
+        l0_entity_source = "l3_result"
+        l0_requires = ["l2", "l3"]
+
+        if self._l4_config:
+            nodes.append({
+                "id": "l4",
+                "processor": "l4_reranker",
+                "requires": ["l2", "l3"],
+                "inputs": {
+                    "texts": {
+                        "source": "$input",
+                        "fields": "texts"
+                    },
+                    "candidates": {
+                        "source": "l2_result",
+                        "fields": "candidates"
+                    }
+                },
+                "output": {"key": "l4_result"},
+                "schema": {"template": self._schema_template},
+                "config": self._l4_config
+            })
+            l0_entity_source = "l4_result"
+            l0_requires.append("l4")
+
+        nodes.append({
+            "id": "l0",
+            "processor": "l0_aggregator",
+            "requires": l0_requires,
+            "inputs": {
+                "l1_entities": {
+                    "source": "$input",
+                    "fields": "entities"
+                },
+                "l2_candidates": {
+                    "source": "l2_result",
+                    "fields": "candidates"
+                },
+                "l3_entities": {
+                    "source": l0_entity_source,
+                    "fields": "entities"
+                }
+            },
+            "output": {"key": "l0_result"},
+            "config": self._l0_config,
+            "schema": {"template": self._schema_template}
+        })
+
+        return {
+            "name": self.name,
+            "description": self.description,
+            "nodes": nodes
+        }
 
     def save(self, filepath: str) -> None:
         """Save configuration to YAML file"""
