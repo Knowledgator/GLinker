@@ -101,7 +101,7 @@ result = executor.execute({"texts": ["CRISPR-Cas9 enables precise gene therapy"]
 Install easily using pip:
 
 ```bash
-pip install git+https://github.com/Knowledgator/GLinker.git
+pip install glinker
 ```
 
 Or install from source for development purposes:
@@ -237,6 +237,28 @@ executor = ProcessorFactory.create_simple(
 )
 ```
 
+**With external NER entities (skip built-in entity discovery):**
+
+When you already have NER results from an external framework (spaCy, Stanza, a custom model, etc.), pass `external_entities=True` to feed pre-extracted mentions directly into the linking pipeline. Each input text must be accompanied by a list of entity dicts with `text`, `start`, and `end` keys:
+
+```python
+executor = ProcessorFactory.create_simple(
+    model_name="knowledgator/gliner-linker-base-v1.0",
+    entities="data/entities.jsonl",
+    external_entities=True,
+)
+
+result = executor.execute({
+    "texts": ["CRISPR-Cas9 enables precise gene therapy."],
+    "entities": [[
+        {"text": "CRISPR-Cas9", "start": 0, "end": 11},
+        {"text": "gene therapy", "start": 28, "end": 40}
+    ]]
+})
+```
+
+The pipeline uses `strict_matching=True` in this mode since external NER provides precise spans — L0 will only output entities at the positions you provide.
+
 **All `create_simple` parameters:**
 
 | Parameter | Default | Description |
@@ -253,6 +275,7 @@ executor = ProcessorFactory.create_simple(
 | `reranker_model` | `None` | GLiNER model for L4 reranking (adds L4 node when set) |
 | `reranker_max_labels` | `20` | Max candidate labels per L4 inference call |
 | `reranker_threshold` | `None` | Score threshold for L4 (defaults to `threshold`) |
+| `external_entities` | `False` | Read pre-extracted entity mentions from `$input.entities` (list of dicts with `text`, `start`, `end`) |
 
 ### Option 2: From a YAML config file
 
@@ -294,6 +317,26 @@ builder.l2.add("postgres", priority=0)
 builder.l3.configure(model="knowledgator/gliner-linker-large-v1.0", use_precomputed_embeddings=True)
 builder.l0.configure(strict_matching=True, min_confidence=0.3)
 builder.save("config.yaml")
+```
+
+**Linking-only mode (skip L1, use external NER):**
+
+When you omit the L1 configuration, `ConfigBuilder` automatically creates a linking-only pipeline (L2 → L3 → L0) that reads pre-extracted entities from `$input.entities`:
+
+```python
+builder = ConfigBuilder(name="linking_only")
+builder.l3.configure(model="knowledgator/gliner-linker-base-v1.0")
+
+executor = DAGExecutor(builder.get_config())
+executor.load_entities("data/entities.jsonl")
+
+result = executor.execute({
+    "texts": ["CRISPR-Cas9 enables precise gene therapy."],
+    "entities": [[
+        {"text": "CRISPR-Cas9", "start": 0, "end": 11},
+        {"text": "gene therapy", "start": 28, "end": 40}
+    ]]
+})
 ```
 
 **With L4 reranker:**
@@ -409,10 +452,11 @@ GLiNKER uses a **layered pipeline** with an optional reranking stage:
 
 **Supported topologies:**
 ```
-Full pipeline:       L1 → L2 → L3 → L0
-With reranking:      L1 → L2 → L3 → L4 → L0
-Simple (no NER):          L2 → L3 → L0
-Simple + reranker:        L2 → L4 → L0
+Full pipeline:               L1 → L2 → L3 → L0
+With reranking:              L1 → L2 → L3 → L4 → L0
+Simple (no NER):                  L2 → L3 → L0
+Simple + reranker:                L2 → L4 → L0
+External entities (no L1):       L2 → L3 → L0   (mentions from input)
 ```
 
 **Key Concepts:**

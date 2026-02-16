@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import yaml
@@ -121,6 +122,7 @@ class ProcessorFactory:
         reranker_model: Optional[str] = None,
         reranker_max_labels: int = 20,
         reranker_threshold: Optional[float] = None,
+        external_entities: bool = False,
     ) -> DAGExecutor:
         """
         Create a minimal L2 -> L3 -> L0 pipeline from a model name.
@@ -128,6 +130,11 @@ class ProcessorFactory:
         Skips L1 (mention extraction). L2 serves as an in-memory entity store
         that returns all loaded entities as candidates. L3 runs GLiNER for
         entity linking. L0 aggregates in loose mode.
+
+        When ``external_entities`` is True, the pipeline expects pre-extracted
+        entity mentions in the input under the ``entities`` key. Each entry
+        must be a list of dicts per text with at least ``text``, ``start``,
+        and ``end`` keys. L0 uses strict matching in this mode.
 
         Optionally adds an L4 reranker after L3 for chunked candidate
         re-evaluation when ``reranker_model`` is provided.
@@ -149,18 +156,43 @@ class ProcessorFactory:
                 an L4 node is added after L3.
             reranker_max_labels: Max candidate labels per L4 inference call.
             reranker_threshold: Score threshold for L4. Defaults to *threshold*.
+            external_entities: If True, the pipeline reads pre-extracted entity
+                mentions from ``$input.entities`` instead of discovering them.
+                Input ``entities`` must be a list (one per text) of lists of
+                dicts, each with ``text``, ``start``, and ``end`` keys.
 
         Returns:
             Configured DAGExecutor ready for ``execute``.
         """
+        if external_entities:
+            warnings.warn(
+                "external_entities=True: the pipeline expects pre-extracted "
+                "NER mentions in the input under the 'entities' key. "
+                "Each element must be a list of dicts per text with at least "
+                "'text', 'start', and 'end' keys, e.g.: "
+                '"entities": [[{"text": "Aspirin", "start": 0, "end": 7}]]',
+                UserWarning,
+                stacklevel=2,
+            )
+
+        l2_inputs = {
+            "texts": {"source": "$input", "fields": "texts"},
+        }
+        l3_inputs = {
+            "texts": {"source": "$input", "fields": "texts"},
+            "candidates": {"source": "l2_result", "fields": "candidates"},
+        }
+
+        if external_entities:
+            l2_inputs["mentions"] = {"source": "$input", "fields": "entities"}
+            l3_inputs["l1_entities"] = {"source": "$input", "fields": "entities"}
+
         nodes = [
             {
                 "id": "l2",
                 "processor": "l2_chain",
                 "requires": [],
-                "inputs": {
-                    "texts": {"source": "$input", "fields": "texts"},
-                },
+                "inputs": l2_inputs,
                 "output": {"key": "l2_result"},
                 "schema": {"template": template},
                 "config": {
@@ -180,10 +212,7 @@ class ProcessorFactory:
                 "id": "l3",
                 "processor": "l3_batch",
                 "requires": ["l2"],
-                "inputs": {
-                    "texts": {"source": "$input", "fields": "texts"},
-                    "candidates": {"source": "l2_result", "fields": "candidates"},
-                },
+                "inputs": l3_inputs,
                 "output": {"key": "l3_result"},
                 "schema": {"template": template},
                 "config": {
@@ -228,18 +257,23 @@ class ProcessorFactory:
             l0_entity_source = "l4_result"
             l0_requires.append("l4")
 
+        l0_inputs = {
+            "l2_candidates": {"source": "l2_result", "fields": "candidates"},
+            "l3_entities": {"source": l0_entity_source, "fields": "entities"},
+        }
+
+        if external_entities:
+            l0_inputs["l1_entities"] = {"source": "$input", "fields": "entities"}
+
         nodes.append({
             "id": "l0",
             "processor": "l0_aggregator",
             "requires": l0_requires,
-            "inputs": {
-                "l2_candidates": {"source": "l2_result", "fields": "candidates"},
-                "l3_entities": {"source": l0_entity_source, "fields": "entities"},
-            },
+            "inputs": l0_inputs,
             "output": {"key": "l0_result"},
             "schema": {"template": template},
             "config": {
-                "strict_matching": False,
+                "strict_matching": external_entities,
                 "min_confidence": 0.0,
                 "include_unlinked": True,
                 "position_tolerance": 2,
