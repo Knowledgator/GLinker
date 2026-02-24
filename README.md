@@ -2,7 +2,7 @@
 
 <div align="center">
     <div>
-        <a href="https://arxiv.org/abs/2406.12925"><img src="https://img.shields.io/badge/arXiv-2406.12925-b31b1b.svg" alt="GLiNER-bi-Encoder"></a>
+        <a href="https://arxiv.org/abs/2602.18487"><img src="https://img.shields.io/badge/arXiv-2602.18487-b31b1b.svg" alt="GLiNER-bi-Encoder"></a>
         <a href="https://discord.gg/HbW9aNJ9"><img alt="Discord" src="https://img.shields.io/discord/1089800235347353640?logo=discord&logoColor=white&label=Discord&color=blue"></a>
         <a href="https://hf.co/collections/knowledgator/gliner-linker"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-yellow" alt="HuggingFace Models"></a>
         <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
@@ -993,6 +993,15 @@ pytest --cov=glinker --cov-report=html
 If you find GLiNKER useful in your research, please consider citing our papers:
 
 ```bibtex
+@misc{stepanov2026millionlabelnerbreakingscale,
+      title={The Million-Label NER: Breaking Scale Barriers with GLiNER bi-encoder}, 
+      author={Ihor Stepanov and Mykhailo Shtopko and Dmytro Vodianytskyi and Oleksandr Lukashov},
+      year={2026},
+      eprint={2602.18487},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2602.18487}, 
+}
 @misc{stepanov2024glinermultitaskgeneralistlightweight,
       title={GLiNER multi-task: Generalist Lightweight Model for Various Information Extraction Tasks},
       author={Ihor Stepanov and Mykhailo Shtopko},
