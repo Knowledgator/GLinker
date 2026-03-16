@@ -1,6 +1,6 @@
 from typing import Dict, List, Set, Any, Optional, Literal, Union
 from collections import defaultdict, deque, OrderedDict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from pathlib import Path
 import re
@@ -109,19 +109,19 @@ class PipeNode(BaseModel):
         default_factory=dict,
         description="Processor configuration"
     )
-    
-    schema: Optional[Dict[str, Any]] = Field(
+
+    field_schema: Optional[Dict[str, Any]] = Field(
         None,
+        alias="schema",
         description="Schema for field mappings/transformations"
     )
-    
+
     condition: Optional[str] = Field(
         None,
         description="Conditional execution expression"
     )
-    
-    class Config:
-        fields = {'schema': 'schema'}
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ============================================================================
@@ -758,14 +758,14 @@ class DAGExecutor:
 
         # Get schema from L2 node (or L3 as fallback)
         template = '{label}'
-        if l2_node and l2_node.schema:
-            template = l2_node.schema.get('template', '{label}')
-        elif l3_node and l3_node.schema:
-            template = l3_node.schema.get('template', '{label}')
+        if l2_node and l2_node.field_schema:
+            template = l2_node.field_schema.get('template', '{label}')
+        elif l3_node and l3_node.field_schema:
+            template = l3_node.field_schema.get('template', '{label}')
 
         # Apply schema to L2 processor
-        if l2_node and l2_node.schema:
-            l2_processor.schema = l2_node.schema
+        if l2_node and l2_node.field_schema:
+            l2_processor.schema = l2_node.field_schema
 
         model_id = l3_processor.config.model_name
 
@@ -866,10 +866,10 @@ class DAGExecutor:
         
         # Get cached processor
         processor = self.processors[node_id]
-        
+
         # Apply schema if needed
-        if node.schema and hasattr(processor, 'schema'):
-            processor.schema = node.schema
+        if node.field_schema and hasattr(processor, 'schema'):
+            processor.schema = node.field_schema
         
         # Execute processor
         try:
