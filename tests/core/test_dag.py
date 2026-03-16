@@ -143,7 +143,7 @@ class TestPipeNode:
             config={},
             schema={"template": "{label}: {description}"}
         )
-        assert node.schema["template"] == "{label}: {description}"
+        assert node.field_schema["template"] == "{label}: {description}"
 
     def test_node_default_requires(self):
         from glinker.core.dag import PipeNode
@@ -155,6 +155,71 @@ class TestPipeNode:
             config={}
         )
         assert node.requires == []
+
+    def test_pydantic2_schema_alias(self):
+        """Test that schema field works via alias (Pydantic 2 compatibility)"""
+        from glinker.core.dag import PipeNode
+        # Create using alias 'schema'
+        node = PipeNode(
+            id="test",
+            processor="l3_batch",
+            inputs={},
+            output={"key": "result"},
+            config={},
+            schema={"template": "{label}"}
+        )
+        # Access via actual field name 'field_schema'
+        assert node.field_schema is not None
+        assert node.field_schema["template"] == "{label}"
+
+    def test_pydantic2_no_name_error(self):
+        """Test that creating PipeNode doesn't raise NameError about schema field"""
+        from glinker.core.dag import PipeNode
+        # This should not raise NameError about shadowing BaseModel attribute
+        try:
+            node = PipeNode(
+                id="test",
+                processor="l1_spacy",
+                inputs={},
+                output={"key": "result"},
+                config={},
+                schema={"template": "{label}: {description}"}
+            )
+            assert node.field_schema["template"] == "{label}: {description}"
+        except NameError as e:
+            pytest.fail(f"NameError raised: {e}")
+
+    def test_pydantic2_model_dump(self):
+        """Test that model serialization works with aliased field"""
+        from glinker.core.dag import PipeNode
+        node = PipeNode(
+            id="test",
+            processor="l3_batch",
+            inputs={},
+            output={"key": "result"},
+            config={},
+            schema={"template": "{label}"}
+        )
+        # Serialize to dict
+        data = node.model_dump(by_alias=True)
+        # Should contain 'schema' key (alias), not 'field_schema'
+        assert "schema" in data
+        assert data["schema"]["template"] == "{label}"
+
+    def test_pydantic2_yaml_compatibility(self):
+        """Test that YAML-style dict can be loaded"""
+        from glinker.core.dag import PipeNode
+        # Simulate YAML loading with 'schema' key
+        yaml_data = {
+            "id": "test",
+            "processor": "l3_batch",
+            "inputs": {},
+            "output": {"key": "result"},
+            "config": {},
+            "schema": {"template": "{label}: {description}"}
+        }
+        node = PipeNode(**yaml_data)
+        assert node.field_schema["template"] == "{label}: {description}"
 
 
 class TestDAGPipeline:
