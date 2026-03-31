@@ -42,31 +42,42 @@ docker run -d \
 docker ps
 ```
 
-### 2. Load Data
-```bash
-# Install Python dependencies
-pip install psycopg2-binary elasticsearch redis
+### 2. Load Data Using Python API
 
-# Load data into each database
-python scripts/database/setup_postgres.py
-python scripts/database/setup_elasticsearch.py
-python scripts/database/setup_redis.py
+```python
+from glinker.core.factory import ProcessorFactory
+import yaml
+
+# Load your pipeline configuration
+with open("configs/pipelines/dict/strict_mode.yaml", 'r') as f:
+    config = yaml.safe_load(f)
+
+# Create executor
+executor = ProcessorFactory.create_from_dict(config)
+
+# Load entities from JSONL file
+# Automatically detects and loads into configured layers (dict, postgres, redis, elasticsearch)
+executor.load_entities(
+    "data/pubmesh_ontology.jsonl",
+    target_layers=["dict"],  # or ["postgres", "redis"], etc.
+    batch_size=1000,
+    overwrite=True  # Set to False to append instead of replacing
+)
+
+print("✅ Entities loaded successfully!")
 ```
 
-### 3. Test
-```bash
-python scripts/test_l2_processor.py
-```
+### 3. Verify Data Loaded
 
-## Using the Automated Script
-```bash
-# Start all services
-bash scripts/database/setup_all.sh
+```python
+# Check entity count in each layer
+l2_processor = executor.processors["l2"]
+counts = l2_processor.component.count_entities()
+print(f"Entity counts: {counts}")
 
-# Load data
-python scripts/database/setup_postgres.py
-python scripts/database/setup_elasticsearch.py
-python scripts/database/setup_redis.py
+# Test a query
+result = executor.execute({"texts": ["BRCA1 is a gene."]})
+print(result)
 ```
 
 ## Connection Details
