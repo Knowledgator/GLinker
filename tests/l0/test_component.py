@@ -310,6 +310,154 @@ class TestL0ComponentSortByConfidence:
         assert sorted_ents[0][1].mention_text == "B"
 
 
+class TestL0ComponentAliasMatching:
+    """Tests for alias matching in candidate_scores building (issue #19)."""
+
+    def test_match_candidate_by_label_with_alias(self, l0_component):
+        """Test that _match_candidate_by_label matches entities by alias."""
+        from glinker.l2.models import DatabaseRecord
+
+        candidates = [
+            DatabaseRecord(
+                entity_id="MLB",
+                label="Major League Baseball",
+                aliases=["MLB", "Major Leagues"],
+                description="Professional baseball organization"
+            ),
+            DatabaseRecord(
+                entity_id="NBA",
+                label="National Basketball Association",
+                aliases=["NBA"],
+                description="Professional basketball organization"
+            )
+        ]
+
+        # L3 returned "MLB" (exact match with alias)
+        matched = l0_component._match_candidate_by_label("MLB", candidates, "{label}")
+
+        assert matched is not None
+        assert matched.entity_id == "MLB"
+        assert matched.label == "Major League Baseball"
+
+    def test_match_candidate_by_label_with_alias_case_insensitive(self, l0_component):
+        """Test that alias matching is case-insensitive."""
+        from glinker.l2.models import DatabaseRecord
+
+        candidates = [
+            DatabaseRecord(
+                entity_id="MLB",
+                label="Major League Baseball",
+                aliases=["MLB", "mlb"],
+                description="Professional baseball"
+            )
+        ]
+
+        # Different case variations
+        matched_upper = l0_component._match_candidate_by_label("MLB", candidates, "{label}")
+        matched_lower = l0_component._match_candidate_by_label("mlb", candidates, "{label}")
+        matched_mixed = l0_component._match_candidate_by_label("Mlb", candidates, "{label}")
+
+        assert matched_upper is not None and matched_upper.entity_id == "MLB"
+        assert matched_lower is not None and matched_lower.entity_id == "MLB"
+        assert matched_mixed is not None and matched_mixed.entity_id == "MLB"
+
+    def test_build_candidate_scores_with_alias(self, l0_component):
+        """Test that candidate_scores includes entities when L3 uses their aliases."""
+        from glinker.l2.models import DatabaseRecord
+
+        candidates = [
+            DatabaseRecord(
+                entity_id="MLB",
+                label="Major League Baseball",
+                aliases=["MLB", "Major Leagues"],
+                description="Professional baseball"
+            ),
+            DatabaseRecord(
+                entity_id="NBA",
+                label="National Basketball Association",
+                aliases=["NBA"],
+                description="Professional basketball"
+            )
+        ]
+
+        # L3 class_probs uses alias "MLB" instead of full label
+        class_probs = {
+            "MLB": 0.92,
+            "National Basketball Association": 0.05,
+            "Other": 0.03
+        }
+
+        scores = l0_component._build_candidate_scores(
+            class_probs, candidates, "{label}"
+        )
+
+        # Entity with alias "MLB" should be in scores
+        assert "MLB" in scores
+        assert scores["MLB"] == 0.92
+
+        # Entity matched by full label should also be in scores
+        assert "NBA" in scores
+        assert scores["NBA"] == 0.05
+
+    def test_aggregate_with_alias_in_class_probs(self, l0_component):
+        """Test full aggregate flow when L3 returns aliases in class_probs."""
+        from glinker.l1.models import L1Entity
+        from glinker.l2.models import DatabaseRecord
+        from glinker.l3.models import L3Entity
+
+        l1_entities = [[
+            L1Entity(text="MLB", start=0, end=3,
+                     left_context="", right_context=" is a baseball league")
+        ]]
+
+        l2_candidates = [[
+            DatabaseRecord(
+                entity_id="MLB",
+                label="Major League Baseball",
+                aliases=["MLB", "Major Leagues"],
+                description="Professional baseball organization"
+            ),
+            DatabaseRecord(
+                entity_id="NBA",
+                label="National Basketball Association",
+                aliases=["NBA"],
+                description="Professional basketball organization"
+            )
+        ]]
+
+        # L3 found "MLB" and returned class_probs with the alias
+        l3_entities = [[
+            L3Entity(
+                text="MLB",
+                label="MLB",  # L3 uses the alias as label
+                start=0,
+                end=3,
+                score=0.95,
+                class_probs={
+                    "MLB": 0.92,  # Alias, not full label
+                    "National Basketball Association": 0.05,
+                    "Other": 0.03
+                }
+            )
+        ]]
+
+        result = l0_component.aggregate(l1_entities, l2_candidates, l3_entities)
+
+        assert len(result) == 1
+        assert len(result[0]) == 1
+
+        entity = result[0][0]
+        assert entity.mention_text == "MLB"
+        assert entity.is_linked is True
+        assert entity.linked_entity.entity_id == "MLB"
+
+        # Most important: candidate_scores should include the entity matched by alias
+        assert "MLB" in entity.candidate_scores
+        assert entity.candidate_scores["MLB"] == 0.92
+        assert "NBA" in entity.candidate_scores
+        assert entity.candidate_scores["NBA"] == 0.05
+
+
 class TestL0ComponentCalculateStats:
     """Tests for calculate_stats method."""
 
