@@ -402,6 +402,12 @@ class L0Component(BaseComponent[L0Config]):
                 if candidate.label.lower().strip() == l3_label_lower:
                     return candidate
 
+        # Check aliases for exact match
+        for candidate in candidates:
+            for alias in getattr(candidate, 'aliases', []):
+                if alias.lower().strip() == l3_label_lower:
+                    return candidate
+
         # Fallback: try simple contains match (for robustness)
         for candidate in candidates:
             cand_label_lower = candidate.label.lower().strip()

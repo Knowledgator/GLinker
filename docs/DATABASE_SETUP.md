@@ -298,14 +298,14 @@ docker exec redis redis-cli ping
 
 ### Prepare Entity Data
 
-Ensure you have `entities.jsonl` in the project root:
+Ensure you have entities in JSONL format:
 
 ```bash
 # Check file exists
-ls -lh entities.jsonl
+ls -lh data/pubmesh_ontology.jsonl
 
 # View first entity
-head -n 1 entities.jsonl | jq .
+head -n 1 data/pubmesh_ontology.jsonl | jq .
 ```
 
 Expected format:
@@ -320,76 +320,120 @@ Expected format:
 }
 ```
 
-### Method 1: Python Scripts (Simple)
-
-Load entities into specific databases:
-
-```bash
-# PostgreSQL
-python scripts/database/jsonl2postgresql.py
-
-# Elasticsearch
-python scripts/database/jsonl2elasticsearch.py
-
-# Redis
-python scripts/database/jsonl2redis.py
-```
-
-### Method 2: DAG Executor (Flexible)
+### Method 1: Using ProcessorFactory (Recommended)
 
 ```python
-from src.core.dag import DAGExecutor, DAGPipeline
+from glinker.core.factory import ProcessorFactory
 import yaml
 
-# Load pipeline configuration
-with open("configs/pipelines/postgres_redis_basic.yaml") as f:
+# Load your pipeline configuration
+with open("configs/pipelines/dict/strict_mode.yaml", 'r') as f:
     config = yaml.safe_load(f)
-    pipeline = DAGPipeline(**config)
 
 # Create executor
-executor = DAGExecutor(pipeline, verbose=True)
+executor = ProcessorFactory.create_from_dict(config, verbose=True)
+
+# Load entities - automatically loads into all configured layers
+executor.load_entities(
+    "data/pubmesh_ontology.jsonl",
+    target_layers=["dict"],  # or ["postgres", "redis", "elasticsearch"]
+    batch_size=1000,
+    overwrite=True  # Set to False to append
+)
+
+print("✅ Entities loaded successfully!")
+```
+
+### Method 2: Load into Multiple Database Layers
+
+```python
+from glinker.core.factory import ProcessorFactory
+import yaml
+
+# Load pipeline config with multiple database layers
+with open("configs/pipelines/postgres_redis_basic.yaml") as f:
+    config = yaml.safe_load(f)
+
+executor = ProcessorFactory.create_from_dict(config, verbose=True)
 
 # Load entities into PostgreSQL and Redis
 executor.load_entities(
-    filepath="entities.jsonl",
-    target_layers=["postgres", "redis"],
+    "data/pubmesh_ontology.jsonl",
+    target_layers=["postgres", "redis"],  # Multiple layers
     batch_size=1000,
-    overwrite=True  # Drop existing data
+    overwrite=True
 )
 
-print("Entities loaded successfully!")
+# Verify loading
+l2_processor = executor.processors["l2"]
+counts = l2_processor.component.count_entities()
+print(f"Entity counts per layer: {counts}")
 ```
 
-### Method 3: Load with Precomputed Embeddings
+### Method 3: Load with Precomputed Embeddings (For Large Datasets)
 
 For BiEncoder models, precompute embeddings for faster inference:
 
 ```python
-from src.core.dag import DAGExecutor, DAGPipeline
+from glinker.core.factory import ProcessorFactory
 import yaml
 
 # Use embedding-enabled config
 with open("configs/pipelines/postgres_redis_embeddings.yaml") as f:
-    pipeline = DAGPipeline(**yaml.safe_load(f))
+    config = yaml.safe_load(f)
 
-executor = DAGExecutor(pipeline, verbose=True)
+executor = ProcessorFactory.create_from_dict(config, verbose=True)
 
 # Step 1: Load entities into PostgreSQL
-print("Loading entities...")
+print("📥 Loading entities...")
 executor.load_entities(
-    filepath="entities.jsonl",
+    "data/pubmesh_ontology.jsonl",
     target_layers=["postgres"],
     batch_size=1000
 )
 
 # Step 2: Precompute embeddings (this takes time!)
-print("Precomputing embeddings...")
+print("🔗 Precomputing embeddings...")
 executor.precompute_embeddings(
     target_layers=["postgres"],
     batch_size=64  # Adjust based on GPU memory
 )
 
-print("Setup complete! Embeddings cached in PostgreSQL.")
+print("✅ Setup complete! Embeddings cached in PostgreSQL.")
+```
+
+### Method 4: Load from Python Dict or List
+
+You can also load entities directly from Python objects:
+
+```python
+# From list of dicts
+entities = [
+    {
+        "entity_id": "E1",
+        "label": "BRCA1",
+        "description": "Tumor suppressor gene",
+        "entity_type": "gene",
+        "popularity": 1000,
+        "aliases": ["BRCA-1"]
+    },
+    # ... more entities
+]
+
+executor.load_entities(entities, target_layers=["dict"])
+
+# Or from dict (keys are entity_ids)
+entities_dict = {
+    "E1": {
+        "label": "BRCA1",
+        "description": "Tumor suppressor gene",
+        "entity_type": "gene",
+        "popularity": 1000,
+        "aliases": ["BRCA-1"]
+    }
+}
+
+executor.load_entities(entities_dict, target_layers=["dict"])
 ```
 
 ---
@@ -464,26 +508,29 @@ docker exec redis redis-cli INFO memory | grep used_memory_human
 ### Test Pipeline End-to-End
 
 ```python
-from src.core.dag import DAGExecutor, DAGPipeline
-from src.l1.models import L1Input
+from glinker.core.factory import ProcessorFactory
 import yaml
 
 # Load config
-with open("configs/pipelines/postgres_redis_basic.yaml") as f:
-    pipeline = DAGPipeline(**yaml.safe_load(f))
+with open("configs/pipelines/dict/strict_mode.yaml") as f:
+    config = yaml.safe_load(f)
 
-# Create executor
-executor = DAGExecutor(pipeline, verbose=True)
+# Create and load executor
+executor = ProcessorFactory.create_from_dict(config, verbose=True)
+executor.load_entities("data/pubmesh_ontology.jsonl", target_layers=["dict"])
 
 # Test query
 test_text = "BRCA1 mutations are associated with breast cancer risk."
-result = executor.execute(L1Input(texts=[test_text]))
+result = executor.execute({"texts": [test_text]})
 
 # Check results
 l0_result = result.get("l0_result")
-print(f"Found {len(l0_result.entities)} entities")
-for entity in l0_result.entities:
-    print(f"  - {entity.mention}: {entity.linked_entity.label if entity.linked_entity else 'Not linked'}")
+if l0_result and l0_result.entities:
+    entities = l0_result.entities[0]
+    print(f"✅ Found {len(entities)} mentions")
+    for entity in entities:
+        if entity.is_linked:
+            print(f"  - {entity.mention_text} → {entity.linked_entity.label} ({entity.linked_entity.confidence:.2f})")
 ```
 
 ---
