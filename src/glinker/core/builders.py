@@ -181,7 +181,9 @@ class ConfigBuilder:
                     fuzzy_similarity = 0.3
                 layer["config"] = {
                     "hosts": db_config.get("hosts", ["http://localhost:9200"]),
-                    "index_name": db_config.get("index_name", "entities")
+                    "index_name": db_config.get("index_name", "entities"),
+                    "popularity_boost": db_config.get("popularity_boost", False),
+                    "api_key": db_config.get("api_key"),
                 }
                 layer["fuzzy"] = {"min_similarity": fuzzy_similarity}
 

@@ -421,51 +421,76 @@ class RedisLayer(DatabaseLayer):
 
 class ElasticsearchLayer(DatabaseLayer):
     """Elasticsearch full-text search layer"""
-    
+
     def _setup(self):
         self.client = Elasticsearch(
             self.config.config['hosts'],
             api_key=self.config.config.get('api_key')
         )
         self.index_name = self.config.config['index_name']
-    
+        self.popularity_boost = self.config.config.get('popularity_boost', False)
+
+    def _build_query(self, match_query: dict) -> dict:
+        """Wrap a match query with optional popularity boosting.
+
+        When popularity_boost is enabled, wraps the query in a function_score
+        that multiplies BM25 relevance by ln(2 + popularity). This brings ES
+        in line with PostgresLayer, which uses ORDER BY popularity DESC.
+
+        Uses ln2p (not ln1p) to avoid zeroing out entities with popularity=0,
+        since ln(2+0)=0.69 while ln(1+0)=0.
+        """
+        if not self.popularity_boost:
+            return {"query": match_query, "size": 50}
+
+        return {
+            "query": {
+                "function_score": {
+                    "query": match_query,
+                    "field_value_factor": {
+                        "field": "popularity",
+                        "modifier": "ln2p",
+                        "missing": 1
+                    },
+                    "boost_mode": "multiply"
+                }
+            },
+            "size": 50
+        }
+
     def search(self, query: str) -> List[DatabaseRecord]:
         query = self.normalize_query(query)
-        
+
         try:
-            body = {
-                "query": {
-                    "multi_match": {
-                        "query": query,
-                        "fields": ["label^2", "aliases^1.5", "description"],
-                        "type": "best_fields"
-                    }
-                },
-                "size": 50
+            match_query = {
+                "multi_match": {
+                    "query": query,
+                    "fields": ["label^2", "aliases^1.5", "description"],
+                    "type": "best_fields"
+                }
             }
+            body = self._build_query(match_query)
             response = self.client.search(index=self.index_name, body=body)
             return self._process_hits(response['hits']['hits'])
         except Exception as e:
             print(f"[ERROR ES] Search error: {e}")
             return []
-    
+
     def search_fuzzy(self, query: str) -> List[DatabaseRecord]:
         query = self.normalize_query(query)
         fuzzy_distance = self.fuzzy_config.max_distance
-        
+
         try:
-            body = {
-                "query": {
-                    "multi_match": {
-                        "query": query,
-                        "fields": ["label^2", "aliases^1.5", "description"],
-                        "fuzziness": fuzzy_distance,
-                        "prefix_length": self.fuzzy_config.prefix_length,
-                        "max_expansions": 50
-                    }
-                },
-                "size": 50
+            match_query = {
+                "multi_match": {
+                    "query": query,
+                    "fields": ["label^2", "aliases^1.5", "description"],
+                    "fuzziness": fuzzy_distance,
+                    "prefix_length": self.fuzzy_config.prefix_length,
+                    "max_expansions": 50
+                }
             }
+            body = self._build_query(match_query)
             response = self.client.search(index=self.index_name, body=body)
             return self._process_hits(response['hits']['hits'])
         except Exception as e:
