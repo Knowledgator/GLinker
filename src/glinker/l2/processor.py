@@ -55,8 +55,8 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
             ("search", {}),
             ("filter_by_popularity", {}),
             ("deduplicate_candidates", {}),
+            ("sort_by_popularity", {}),
             ("limit_candidates", {}),
-            ("sort_by_popularity", {})
         ]
     
     def __call__(
