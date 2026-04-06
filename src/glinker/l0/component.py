@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional, Dict, Tuple
 from glinker.core.base import BaseComponent
 from .models import (
@@ -207,26 +208,26 @@ class L0Component(BaseComponent[L0Config]):
         all_candidates: List[DatabaseRecord]
     ) -> List[DatabaseRecord]:
         """
-        Get candidates for specific mention
+        Get candidates for specific mention.
 
-        Note: L2 returns candidates grouped per text. We need to match by text content.
+        Uses word-boundary matching so the mention text can appear anywhere
+        in the candidate label or aliases as a complete word:
+          "Apple" matches "Apple Inc." (prefix)
+          "Biden" matches "Joe Biden" (suffix)
+          "China" matches "People's Republic of China" (middle)
+          "Georgia" does NOT match "Georgian" (not a word boundary)
         """
         matched_candidates = []
-
-        # Match candidates by mention text (normalize)
         mention_text_lower = l1_mention.text.lower().strip()
+        mention_re = re.compile(r"\b" + re.escape(mention_text_lower) + r"\b", re.IGNORECASE)
 
         for candidate in all_candidates:
-            # Check if candidate matches this mention
-            if candidate.label.lower().strip() == mention_text_lower:
+            if mention_re.search(candidate.label):
                 matched_candidates.append(candidate)
                 continue
 
-            # Check aliases
-            for alias in candidate.aliases:
-                if alias.lower().strip() == mention_text_lower:
-                    matched_candidates.append(candidate)
-                    break
+            if any(mention_re.search(alias) for alias in candidate.aliases):
+                matched_candidates.append(candidate)
 
         return matched_candidates
 
@@ -408,13 +409,17 @@ class L0Component(BaseComponent[L0Config]):
                 if alias.lower().strip() == l3_label_lower:
                     return candidate
 
-        # Fallback: try simple contains match (for robustness)
+        # Fallback: try contains match, preferring the longest (most specific) label
+        best_match = None
+        best_len = 0
         for candidate in candidates:
             cand_label_lower = candidate.label.lower().strip()
             if cand_label_lower and cand_label_lower in l3_label_lower:
-                return candidate
+                if len(cand_label_lower) > best_len:
+                    best_match = candidate
+                    best_len = len(cand_label_lower)
 
-        return None
+        return best_match
 
     def _determine_stage(
         self,
