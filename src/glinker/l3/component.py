@@ -1,27 +1,30 @@
-from typing import Dict, List, Optional
+from typing import List
+
 import torch
 from gliner import GLiNER
+
 from glinker.core.base import BaseComponent
+
 from .models import L3Config, L3Entity
 
 
 class L3Component(BaseComponent[L3Config]):
-    """GLiNER-based entity linking component"""
+    """GLiNER-based entity linking component."""
 
     def _setup(self):
-        """Initialize GLiNER model"""
+        """Initialize GLiNER model."""
         self.model = GLiNER.from_pretrained(
-            self.config.model_name,
-            token=self.config.token,
-            max_length=self.config.max_length
+            self.config.model_name, token=self.config.token, max_length=self.config.max_length
         )
         self.model.to(self.config.device)
 
         # Fix labels tokenizer max_length for BiEncoder models
         # Some models have model_max_length not properly set (> 10^18)
-        if (self.config.max_length is not None and
-            hasattr(self.model, 'data_processor') and
-            hasattr(self.model.data_processor, 'labels_tokenizer')):
+        if (
+            self.config.max_length is not None
+            and hasattr(self.model, "data_processor")
+            and hasattr(self.model.data_processor, "labels_tokenizer")
+        ):
             tok = self.model.data_processor.labels_tokenizer
             if tok.model_max_length > 100000:
                 tok.model_max_length = self.config.max_length
@@ -32,8 +35,8 @@ class L3Component(BaseComponent[L3Config]):
 
     @property
     def supports_precomputed_embeddings(self) -> bool:
-        """Check if model supports precomputed embeddings (BiEncoder)"""
-        return hasattr(self.model, 'encode_labels') and self.model.config.labels_encoder is not None
+        """Check if model supports precomputed embeddings (BiEncoder)."""
+        return hasattr(self.model, "encode_labels") and self.model.config.labels_encoder is not None
 
     def get_available_methods(self) -> List[str]:
         return [
@@ -42,7 +45,7 @@ class L3Component(BaseComponent[L3Config]):
             "encode_labels",
             "filter_by_score",
             "sort_by_position",
-            "deduplicate_entities"
+            "deduplicate_entities",
         ]
 
     def encode_labels(self, labels: List[str], batch_size: int = 32) -> torch.Tensor:
@@ -72,7 +75,7 @@ class L3Component(BaseComponent[L3Config]):
         text: str,
         labels: List[str],
         embeddings: torch.Tensor,
-        input_spans: List[List[dict]] = None
+        input_spans: List[List[dict]] | None = None,
     ) -> List[L3Entity]:
         """
         Predict entities using pre-computed label embeddings.
@@ -91,21 +94,16 @@ class L3Component(BaseComponent[L3Config]):
             # Fallback to regular prediction
             return self.predict_entities(text, labels, input_spans=input_spans)
 
-        kwargs = dict(
-            threshold=self.config.threshold,
-            flat_ner=self.config.flat_ner,
-            multi_label=self.config.multi_label,
-            return_class_probs=True
-        )
+        kwargs = {
+            "threshold": self.config.threshold,
+            "flat_ner": self.config.flat_ner,
+            "multi_label": self.config.multi_label,
+            "return_class_probs": True,
+        }
         if input_spans is not None:
             kwargs["input_spans"] = input_spans
 
-        entities = self.model.predict_with_embeds(
-            text,
-            embeddings,
-            labels,
-            **kwargs
-        )
+        entities = self.model.predict_with_embeds(text, embeddings, labels, **kwargs)
 
         return [
             L3Entity(
@@ -114,18 +112,15 @@ class L3Component(BaseComponent[L3Config]):
                 start=e["start"],
                 end=e["end"],
                 score=e["score"],
-                class_probs=e.get("class_probs")
+                class_probs=e.get("class_probs"),
             )
             for e in entities
         ]
 
     def predict_entities(
-        self,
-        text: str,
-        labels: List[str],
-        input_spans: List[List[dict]] = None
+        self, text: str, labels: List[str], input_spans: List[List[dict]] | None = None
     ) -> List[L3Entity]:
-        """Predict entities using GLiNER
+        """Predict entities using GLiNER.
 
         Args:
             text: Input text
@@ -136,20 +131,16 @@ class L3Component(BaseComponent[L3Config]):
         if not labels:
             return []
 
-        kwargs = dict(
-            threshold=self.config.threshold,
-            flat_ner=self.config.flat_ner,
-            multi_label=self.config.multi_label,
-            return_class_probs=True
-        )
+        kwargs = {
+            "threshold": self.config.threshold,
+            "flat_ner": self.config.flat_ner,
+            "multi_label": self.config.multi_label,
+            "return_class_probs": True,
+        }
         if input_spans is not None:
             kwargs["input_spans"] = input_spans
 
-        entities = self.model.predict_entities(
-            text,
-            labels,
-            **kwargs
-        )
+        entities = self.model.predict_entities(text, labels, **kwargs)
 
         return [
             L3Entity(
@@ -158,22 +149,24 @@ class L3Component(BaseComponent[L3Config]):
                 start=e["start"],
                 end=e["end"],
                 score=e["score"],
-                class_probs=e.get("class_probs")
+                class_probs=e.get("class_probs"),
             )
             for e in entities
         ]
-    
-    def filter_by_score(self, entities: List[L3Entity], threshold: float = None) -> List[L3Entity]:
-        """Filter entities by confidence score"""
+
+    def filter_by_score(
+        self, entities: List[L3Entity], threshold: float | None = None
+    ) -> List[L3Entity]:
+        """Filter entities by confidence score."""
         threshold = threshold if threshold is not None else self.config.threshold
         return [e for e in entities if e.score >= threshold]
-    
+
     def sort_by_position(self, entities: List[L3Entity]) -> List[L3Entity]:
-        """Sort entities by position in text"""
+        """Sort entities by position in text."""
         return sorted(entities, key=lambda e: e.start)
-    
+
     def deduplicate_entities(self, entities: List[L3Entity]) -> List[L3Entity]:
-        """Remove duplicate entities"""
+        """Remove duplicate entities."""
         seen = set()
         unique = []
         for entity in entities:

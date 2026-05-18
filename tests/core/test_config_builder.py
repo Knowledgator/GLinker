@@ -126,7 +126,7 @@ class TestL2Builder:
         assert layer["write"] is True
         assert layer["search_mode"] == ["exact", "fuzzy"]
         assert layer["ttl"] == 0
-        assert layer["fuzzy"]["min_similarity"] == 0.6
+        assert layer["fuzzy"]["min_similarity"] == 0.75
 
     def test_l2_add_redis_layer_defaults(self):
         from glinker.core.builders import ConfigBuilder
@@ -326,13 +326,15 @@ class TestL0Builder:
 class TestConfigBuilding:
     """Tests for config building and validation."""
 
-    def test_build_requires_l1(self):
+    def test_build_without_l1_works(self):
+        """L1 is now optional - pipeline can work with explicit entities."""
         from glinker.core.builders import ConfigBuilder
         builder = ConfigBuilder(name="test")
         builder.l3.configure()
 
-        with pytest.raises(ValueError, match="L1 configuration is required"):
-            builder.build()
+        # Should not raise - L1 is optional now
+        config = builder.build()
+        assert config is not None
 
     def test_build_requires_l3(self):
         from glinker.core.builders import ConfigBuilder

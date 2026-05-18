@@ -1,11 +1,13 @@
+from typing import Any, Dict, List
+
 from pydantic import Field
-from typing import Dict, List, Any, Optional
-from glinker.core.base import BaseConfig, BaseInput, BaseOutput
+
+from glinker.core.base import BaseInput, BaseConfig, BaseOutput
 
 
 class L3Config(BaseConfig):
     model_name: str = Field(...)
-    token: Optional[str] = Field(None)
+    token: str | None = Field(None)
     device: str = Field("cpu")
     threshold: float = Field(0.5)
     flat_ner: bool = Field(True)
@@ -14,16 +16,12 @@ class L3Config(BaseConfig):
 
     # Embedding settings
     use_precomputed_embeddings: bool = Field(
-        True,
-        description="Use precomputed embeddings from L2 candidates if available"
+        True, description="Use precomputed embeddings from L2 candidates if available"
     )
-    cache_embeddings: bool = Field(
-        False,
-        description="Cache computed embeddings back to L2"
-    )
+    cache_embeddings: bool = Field(False, description="Cache computed embeddings back to L2")
     max_length: int = Field(
         None,
-        description="Maximum sequence length for tokenization. Passed to GLiNER.from_pretrained."
+        description="Maximum sequence length for tokenization. Passed to GLiNER.from_pretrained.",
     )
 
 
@@ -39,7 +37,7 @@ class L3Entity(BaseOutput):
     start: int
     end: int
     score: float
-    class_probs: Optional[Dict[str, float]] = Field(
+    class_probs: Dict[str, float] | None = Field(
         None, description="Per-label class probabilities from GLiNER"
     )
 

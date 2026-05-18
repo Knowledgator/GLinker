@@ -1,44 +1,44 @@
 import warnings
+from typing import Any, Dict, List
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+
 import yaml
+
+from .dag import PipeNode, DAGExecutor, DAGPipeline, InputConfig, OutputConfig
 from .registry import processor_registry
-from .dag import DAGPipeline, DAGExecutor, PipeNode, InputConfig, OutputConfig
 
 
 def load_yaml(path: str | Path) -> dict:
-    """Load YAML configuration file"""
-    with open(path, 'r') as f:
+    """Load YAML configuration file."""
+    with open(path) as f:
         return yaml.safe_load(f)
 
 
 class ProcessorFactory:
-    """Factory for creating pipelines from configs"""
-    
+    """Factory for creating pipelines from configs."""
+
     @staticmethod
     def create_from_registry(
-        processor_name: str,
-        config_dict: dict,
-        pipeline: list[tuple[str, dict]] = None
+        processor_name: str, config_dict: dict, pipeline: list[tuple[str, dict]] | None = None
     ):
         """
-        Create single processor from registry
-        
+        Create single processor from registry.
+
         For internal use by DAGExecutor
         """
         factory = processor_registry.get(processor_name)
         return factory(config_dict, pipeline)
-    
+
     @staticmethod
     def create_pipeline(config_path: str | Path, verbose: bool = False) -> DAGExecutor:
         """
-        Create DAG pipeline from YAML config
-        
+        Create DAG pipeline from YAML config.
+
         Supports:
         - Single node (just L2)
         - Multiple nodes (L1 → L2 → L3)
         - Complex DAGs with dependencies
-        
+
         Example config:
             name: "my_pipeline"
             nodes:
@@ -50,60 +50,56 @@ class ProcessorFactory:
                 config: {...}
         """
         config = load_yaml(config_path)
-        
+
         nodes = []
-        for node_cfg in config['nodes']:
+        for node_cfg in config["nodes"]:
             inputs = {}
-            for name, data in node_cfg['inputs'].items():
+            for name, data in node_cfg["inputs"].items():
                 inputs[name] = InputConfig(**data)
-            
+
             node = PipeNode(
-                id=node_cfg['id'],
-                processor=node_cfg['processor'],
+                id=node_cfg["id"],
+                processor=node_cfg["processor"],
                 inputs=inputs,
-                output=OutputConfig(**node_cfg['output']),
-                requires=node_cfg.get('requires', []),
-                config=node_cfg['config'],
-                schema=node_cfg.get('schema')
+                output=OutputConfig(**node_cfg["output"]),
+                requires=node_cfg.get("requires", []),
+                config=node_cfg["config"],
+                schema=node_cfg.get("schema"),
             )
             nodes.append(node)
-        
+
         pipeline = DAGPipeline(
-            name=config['name'],
-            description=config.get('description'),
-            nodes=nodes
+            name=config["name"], description=config.get("description"), nodes=nodes
         )
-        
+
         return DAGExecutor(pipeline, verbose=verbose)
-    
+
     @staticmethod
     def create_from_dict(config_dict: dict, verbose: bool = False) -> DAGExecutor:
         """
-        Create pipeline from dict (for programmatic use)
-        
+        Create pipeline from dict (for programmatic use).
+
         Same as create_pipeline but accepts dict instead of file path
         """
         nodes = []
-        for node_cfg in config_dict['nodes']:
+        for node_cfg in config_dict["nodes"]:
             inputs = {}
-            for name, data in node_cfg['inputs'].items():
+            for name, data in node_cfg["inputs"].items():
                 inputs[name] = InputConfig(**data)
-            
+
             node = PipeNode(
-                id=node_cfg['id'],
-                processor=node_cfg['processor'],
+                id=node_cfg["id"],
+                processor=node_cfg["processor"],
                 inputs=inputs,
-                output=OutputConfig(**node_cfg['output']),
-                requires=node_cfg.get('requires', []),
-                config=node_cfg['config'],
-                schema=node_cfg.get('schema')
+                output=OutputConfig(**node_cfg["output"]),
+                requires=node_cfg.get("requires", []),
+                config=node_cfg["config"],
+                schema=node_cfg.get("schema"),
             )
             nodes.append(node)
-        
+
         pipeline = DAGPipeline(
-            name=config_dict['name'],
-            description=config_dict.get('description'),
-            nodes=nodes
+            name=config_dict["name"], description=config_dict.get("description"), nodes=nodes
         )
 
         return DAGExecutor(pipeline, verbose=verbose)
@@ -114,14 +110,14 @@ class ProcessorFactory:
         device: str = "cpu",
         threshold: float = 0.5,
         template: str = "{label}",
-        max_length: Optional[int] = 512,
-        token: Optional[str] = None,
-        entities: Optional[Union[str, Path, List[Dict[str, Any]], Dict[str, Dict[str, Any]]]] = None,
+        max_length: int | None = 512,
+        token: str | None = None,
+        entities: str | Path | List[Dict[str, Any]] | Dict[str, Dict[str, Any]] | None = None,
         precompute_embeddings: bool = False,
         verbose: bool = False,
-        reranker_model: Optional[str] = None,
+        reranker_model: str | None = None,
         reranker_max_labels: int = 20,
-        reranker_threshold: Optional[float] = None,
+        reranker_threshold: float | None = None,
         external_entities: bool = False,
     ) -> DAGExecutor:
         """
@@ -233,27 +229,31 @@ class ProcessorFactory:
         l0_requires = ["l2", "l3"]
 
         if reranker_model:
-            nodes.append({
-                "id": "l4",
-                "processor": "l4_reranker",
-                "requires": ["l2", "l3"],
-                "inputs": {
-                    "texts": {"source": "$input", "fields": "texts"},
-                    "candidates": {"source": "l2_result", "fields": "candidates"},
-                },
-                "output": {"key": "l4_result"},
-                "schema": {"template": template},
-                "config": {
-                    "model_name": reranker_model,
-                    "device": device,
-                    "threshold": reranker_threshold if reranker_threshold is not None else threshold,
-                    "flat_ner": True,
-                    "multi_label": False,
-                    "max_labels": reranker_max_labels,
-                    "max_length": max_length,
-                    "token": token,
-                },
-            })
+            nodes.append(
+                {
+                    "id": "l4",
+                    "processor": "l4_reranker",
+                    "requires": ["l2", "l3"],
+                    "inputs": {
+                        "texts": {"source": "$input", "fields": "texts"},
+                        "candidates": {"source": "l2_result", "fields": "candidates"},
+                    },
+                    "output": {"key": "l4_result"},
+                    "schema": {"template": template},
+                    "config": {
+                        "model_name": reranker_model,
+                        "device": device,
+                        "threshold": reranker_threshold
+                        if reranker_threshold is not None
+                        else threshold,
+                        "flat_ner": True,
+                        "multi_label": False,
+                        "max_labels": reranker_max_labels,
+                        "max_length": max_length,
+                        "token": token,
+                    },
+                }
+            )
             l0_entity_source = "l4_result"
             l0_requires.append("l4")
 
@@ -265,20 +265,22 @@ class ProcessorFactory:
         if external_entities:
             l0_inputs["l1_entities"] = {"source": "$input", "fields": "entities"}
 
-        nodes.append({
-            "id": "l0",
-            "processor": "l0_aggregator",
-            "requires": l0_requires,
-            "inputs": l0_inputs,
-            "output": {"key": "l0_result"},
-            "schema": {"template": template},
-            "config": {
-                "strict_matching": external_entities,
-                "min_confidence": 0.0,
-                "include_unlinked": True,
-                "position_tolerance": 2,
-            },
-        })
+        nodes.append(
+            {
+                "id": "l0",
+                "processor": "l0_aggregator",
+                "requires": l0_requires,
+                "inputs": l0_inputs,
+                "output": {"key": "l0_result"},
+                "schema": {"template": template},
+                "config": {
+                    "strict_matching": external_entities,
+                    "min_confidence": 0.0,
+                    "include_unlinked": True,
+                    "position_tolerance": 2,
+                },
+            }
+        )
 
         config = {
             "name": "simple",
