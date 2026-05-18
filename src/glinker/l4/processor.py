@@ -1,19 +1,21 @@
 from typing import Any, List, Optional
+
 from glinker.core.base import BaseProcessor
+from glinker.l3.models import L3Input, L3Entity, L3Output
 from glinker.core.registry import processor_registry
-from glinker.l3.models import L3Input, L3Output, L3Entity
+
 from .models import L4Config
 from .component import L4Component
 
 
 class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
-    """GLiNER reranking processor with candidate chunking"""
+    """GLiNER reranking processor with candidate chunking."""
 
     def __init__(
         self,
         config: L4Config,
         component: L4Component,
-        pipeline: list[tuple[str, dict[str, Any]]] = None
+        pipeline: list[tuple[str, dict[str, Any]]] | None = None,
     ):
         super().__init__(config, component, pipeline)
         self._validate_pipeline()
@@ -24,7 +26,7 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
             ("predict_entities_chunked", {}),
             ("deduplicate_entities", {}),
             ("filter_by_score", {}),
-            ("sort_by_position", {})
+            ("sort_by_position", {}),
         ]
 
     @staticmethod
@@ -35,10 +37,10 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
 
     def __call__(
         self,
-        texts: List[str] = None,
-        candidates: List[List[Any]] = None,
-        l1_entities: List[List[Any]] = None,
-        input_data: L3Input = None
+        texts: List[str] | None = None,
+        candidates: List[List[Any]] | None = None,
+        l1_entities: List[List[Any]] | None = None,
+        input_data: L3Input = None,
     ) -> L3Output:
         """Process texts with candidate labels using chunked GLiNER inference.
 
@@ -61,9 +63,8 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
         max_labels = self.config.max_labels
 
         # Detect shared candidates (all texts use the same list)
-        shared = (
-            len(candidates_to_process) > 1
-            and all(c is candidates_to_process[0] for c in candidates_to_process[1:])
+        shared = len(candidates_to_process) > 1 and all(
+            c is candidates_to_process[0] for c in candidates_to_process[1:]
         )
 
         shared_labels = None
@@ -84,11 +85,10 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
 
             if shared:
                 labels = shared_labels
+            elif self.schema:
+                labels, _ = self._create_gliner_labels_with_mapping(text_candidates)
             else:
-                if self.schema:
-                    labels, _ = self._create_gliner_labels_with_mapping(text_candidates)
-                else:
-                    labels = [self._extract_label(c) for c in text_candidates]
+                labels = [self._extract_label(c) for c in text_candidates]
 
             # Run chunked prediction
             entities = self.component.predict_entities_chunked(
@@ -105,23 +105,23 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
         return L3Output(entities=all_entities)
 
     def _extract_label(self, candidate: Any) -> str:
-        """Extract label from candidate"""
-        if hasattr(candidate, 'label'):
+        """Extract label from candidate."""
+        if hasattr(candidate, "label"):
             return candidate.label
         return str(candidate)
 
     def _create_gliner_labels_with_mapping(self, candidates: List[Any]) -> tuple:
         """Create GLiNER labels using schema template and return label->candidate mapping."""
-        template = self.schema.get('template', '{label}')
+        template = self.schema.get("template", "{label}")
         labels = []
         label_to_candidate = {}
         seen = set()
 
         for candidate in candidates:
             try:
-                if hasattr(candidate, 'model_dump'):
+                if hasattr(candidate, "model_dump"):
                     cand_dict = candidate.model_dump()
-                elif hasattr(candidate, 'dict'):
+                elif hasattr(candidate, "dict"):
                     cand_dict = candidate.dict()
                 elif isinstance(candidate, dict):
                     cand_dict = candidate
@@ -139,7 +139,7 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
                     label_to_candidate[label] = candidate
                     seen.add(label_lower)
             except (KeyError, AttributeError):
-                if hasattr(candidate, 'label'):
+                if hasattr(candidate, "label"):
                     if candidate.label.lower() not in seen:
                         labels.append(candidate.label)
                         label_to_candidate[candidate.label] = candidate
@@ -149,8 +149,8 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
 
 
 @processor_registry.register("l4_reranker")
-def create_l4_processor(config_dict: dict, pipeline: list = None) -> L4Processor:
-    """Factory: creates component + processor"""
+def create_l4_processor(config_dict: dict, pipeline: list | None = None) -> L4Processor:
+    """Factory: creates component + processor."""
     config = L4Config(**config_dict)
     component = L4Component(config)
     return L4Processor(config, component, pipeline)

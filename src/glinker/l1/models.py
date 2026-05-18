@@ -1,6 +1,8 @@
-from pydantic import Field
 from typing import List, Optional
-from glinker.core.base import BaseConfig, BaseInput, BaseOutput
+
+from pydantic import Field
+
+from glinker.core.base import BaseInput, BaseConfig, BaseOutput
 
 
 class L1Config(BaseConfig):
@@ -14,21 +16,18 @@ class L1Config(BaseConfig):
 
 
 class L1GlinerConfig(L1Config):
-    """Configuration for GLiNER-based L1 entity extraction"""
+    """Configuration for GLiNER-based L1 entity extraction."""
+
     model: str = Field(..., description="GLiNER model identifier (overrides spaCy model)")
     labels: List[str] = Field(..., description="Fixed list of labels for entity extraction")
-    token: Optional[str] = Field(None, description="HuggingFace token")
+    token: str | None = Field(None, description="HuggingFace token")
     threshold: float = Field(0.3, description="Confidence threshold for entity extraction")
     flat_ner: bool = Field(True, description="Use flat NER (no nested entities)")
     multi_label: bool = Field(False, description="Allow multiple labels per entity")
     use_precomputed_embeddings: bool = Field(
-        False,
-        description="Use precomputed label embeddings (BiEncoder only)"
+        False, description="Use precomputed label embeddings (BiEncoder only)"
     )
-    max_length: Optional[int] = Field(
-        None,
-        description="Maximum sequence length for tokenization"
-    )
+    max_length: int | None = Field(None, description="Maximum sequence length for tokenization")
 
 
 class L1Input(BaseInput):
@@ -37,7 +36,7 @@ class L1Input(BaseInput):
 
 class L1Entity(BaseOutput):
     text: str = Field(..., description="Extracted mention text")
-    label: Optional[str] = Field(None, description="Entity label/type")
+    label: str | None = Field(None, description="Entity label/type")
     start: int = Field(..., description="Start position")
     end: int = Field(..., description="End position")
     left_context: str = Field(..., description="Left context")

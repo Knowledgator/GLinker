@@ -1,19 +1,20 @@
 from typing import List, Optional
+
 from gliner import GLiNER
+
 from glinker.core.base import BaseComponent
 from glinker.l3.models import L3Entity
+
 from .models import L4Config
 
 
 class L4Component(BaseComponent[L4Config]):
-    """GLiNER-based reranking component (uni-encoder only, no precomputed embeddings)"""
+    """GLiNER-based reranking component (uni-encoder only, no precomputed embeddings)."""
 
     def _setup(self):
-        """Initialize GLiNER model"""
+        """Initialize GLiNER model."""
         self.model = GLiNER.from_pretrained(
-            self.config.model_name,
-            token=self.config.token,
-            max_length=self.config.max_length
+            self.config.model_name, token=self.config.token, max_length=self.config.max_length
         )
         self.model.to(self.config.device)
 
@@ -23,14 +24,11 @@ class L4Component(BaseComponent[L4Config]):
             "predict_entities_chunked",
             "filter_by_score",
             "sort_by_position",
-            "deduplicate_entities"
+            "deduplicate_entities",
         ]
 
     def predict_entities(
-        self,
-        text: str,
-        labels: List[str],
-        input_spans: List[List[dict]] = None
+        self, text: str, labels: List[str], input_spans: List[List[dict]] | None = None
     ) -> List[L3Entity]:
         """Predict entities using GLiNER for a single label set.
 
@@ -42,12 +40,12 @@ class L4Component(BaseComponent[L4Config]):
         if not labels:
             return []
 
-        kwargs = dict(
-            threshold=self.config.threshold,
-            flat_ner=self.config.flat_ner,
-            multi_label=self.config.multi_label,
-            return_class_probs=True
-        )
+        kwargs = {
+            "threshold": self.config.threshold,
+            "flat_ner": self.config.flat_ner,
+            "multi_label": self.config.multi_label,
+            "return_class_probs": True,
+        }
         if input_spans is not None:
             kwargs["input_spans"] = input_spans
 
@@ -60,7 +58,7 @@ class L4Component(BaseComponent[L4Config]):
                 start=e["start"],
                 end=e["end"],
                 score=e["score"],
-                class_probs=e.get("class_probs")
+                class_probs=e.get("class_probs"),
             )
             for e in entities
         ]
@@ -70,7 +68,7 @@ class L4Component(BaseComponent[L4Config]):
         text: str,
         labels: List[str],
         max_labels: int,
-        input_spans: List[List[dict]] = None
+        input_spans: List[List[dict]] | None = None,
     ) -> List[L3Entity]:
         """Predict entities with candidate chunking.
 
@@ -90,10 +88,7 @@ class L4Component(BaseComponent[L4Config]):
             return self.predict_entities(text, labels, input_spans=input_spans)
 
         # Split labels into chunks
-        chunks = [
-            labels[i:i + max_labels]
-            for i in range(0, len(labels), max_labels)
-        ]
+        chunks = [labels[i : i + max_labels] for i in range(0, len(labels), max_labels)]
 
         all_entities = []
         for chunk in chunks:
@@ -102,17 +97,19 @@ class L4Component(BaseComponent[L4Config]):
 
         return all_entities
 
-    def filter_by_score(self, entities: List[L3Entity], threshold: float = None) -> List[L3Entity]:
-        """Filter entities by confidence score"""
+    def filter_by_score(
+        self, entities: List[L3Entity], threshold: float | None = None
+    ) -> List[L3Entity]:
+        """Filter entities by confidence score."""
         threshold = threshold if threshold is not None else self.config.threshold
         return [e for e in entities if e.score >= threshold]
 
     def sort_by_position(self, entities: List[L3Entity]) -> List[L3Entity]:
-        """Sort entities by position in text"""
+        """Sort entities by position in text."""
         return sorted(entities, key=lambda e: e.start)
 
     def deduplicate_entities(self, entities: List[L3Entity]) -> List[L3Entity]:
-        """Remove duplicate entities, keeping the highest-scoring one per span"""
+        """Remove duplicate entities, keeping the highest-scoring one per span."""
         best = {}
         for entity in entities:
             key = (entity.text, entity.start, entity.end)
