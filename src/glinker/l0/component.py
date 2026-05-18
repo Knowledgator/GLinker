@@ -1,16 +1,14 @@
-from typing import List, Optional, Dict, Tuple
 from glinker.core.base import BaseComponent
-from .models import (
-    L0Config, L0Entity, LinkedEntity
-)
 from glinker.l1.models import L1Entity
 from glinker.l2.models import DatabaseRecord
 from glinker.l3.models import L3Entity
 
+from .models import L0Config, L0Entity, LinkedEntity
+
 
 class L0Component(BaseComponent[L0Config]):
     """
-    L0 aggregation component - combines outputs from L1, L2, L3
+    L0 aggregation component - combines outputs from L1, L2, L3.
 
     Workflow:
     1. For each L1 mention → find its L2 candidates
@@ -18,23 +16,18 @@ class L0Component(BaseComponent[L0Config]):
     3. Create L0Entity with full information from all layers
     """
 
-    def get_available_methods(self) -> List[str]:
-        return [
-            "aggregate",
-            "filter_by_confidence",
-            "sort_by_confidence",
-            "calculate_stats"
-        ]
+    def get_available_methods(self) -> list[str]:
+        return ["aggregate", "filter_by_confidence", "sort_by_confidence", "calculate_stats"]
 
     def aggregate(
         self,
-        l1_entities: List[List[L1Entity]],
-        l2_candidates: List[List[DatabaseRecord]],
-        l3_entities: List[List[L3Entity]],
-        template: str = "{label}"
-    ) -> List[List[L0Entity]]:
+        l1_entities: list[list[L1Entity]],
+        l2_candidates: list[list[DatabaseRecord]],
+        l3_entities: list[list[L3Entity]],
+        template: str = "{label}",
+    ) -> list[list[L0Entity]]:
         """
-        Main aggregation method - combines all layers
+        Main aggregation method - combines all layers.
 
         Args:
             l1_entities: [[L1Entity, ...], ...] - one list per text
@@ -60,13 +53,13 @@ class L0Component(BaseComponent[L0Config]):
 
     def _aggregate_single_text(
         self,
-        l1_mentions: List[L1Entity],
-        l2_candidates: List[DatabaseRecord],
-        l3_links: List[L3Entity],
-        template: str = "{label}"
-    ) -> List[L0Entity]:
+        l1_mentions: list[L1Entity],
+        l2_candidates: list[DatabaseRecord],
+        l3_links: list[L3Entity],
+        template: str = "{label}",
+    ) -> list[L0Entity]:
         """
-        Aggregate data for a single text
+        Aggregate data for a single text.
 
         Strategy:
         1. Build index of L3 linked entities by position
@@ -91,8 +84,11 @@ class L0Component(BaseComponent[L0Config]):
 
             # Check if this mention was linked in L3
             linked_entity, l3_pos = self._find_linked_entity_with_position(
-                l1_mention, l3_by_position, mention_candidates, template,
-                tolerance=self.config.position_tolerance
+                l1_mention,
+                l3_by_position,
+                mention_candidates,
+                template,
+                tolerance=self.config.position_tolerance,
             )
 
             if l3_pos:
@@ -112,7 +108,7 @@ class L0Component(BaseComponent[L0Config]):
             # Create L0Entity
             l0_entity = L0Entity(
                 mention_text=l1_mention.text,
-                label=getattr(l1_mention, 'label', None),  # Safe access in case L1 is skipped
+                label=getattr(l1_mention, "label", None),  # Safe access in case L1 is skipped
                 mention_start=l1_mention.start,
                 mention_end=l1_mention.end,
                 left_context=l1_mention.left_context,
@@ -122,7 +118,7 @@ class L0Component(BaseComponent[L0Config]):
                 linked_entity=linked_entity,
                 is_linked=linked_entity is not None,
                 candidate_scores=candidate_scores,
-                pipeline_stage=pipeline_stage
+                pipeline_stage=pipeline_stage,
             )
 
             results.append(l0_entity)
@@ -150,7 +146,7 @@ class L0Component(BaseComponent[L0Config]):
                         confidence=l3_entity.score,
                         start=l3_entity.start,
                         end=l3_entity.end,
-                        matched_text=l3_entity.text
+                        matched_text=l3_entity.text,
                     )
 
                     l0_entity = L0Entity(
@@ -164,14 +160,14 @@ class L0Component(BaseComponent[L0Config]):
                         linked_entity=linked,
                         is_linked=True,
                         candidate_scores=candidate_scores,
-                        pipeline_stage="l3_only"  # Indicates L3 found it without L1
+                        pipeline_stage="l3_only",  # Indicates L3 found it without L1
                     )
                     results.append(l0_entity)
 
         return results
 
-    def _build_l3_index(self, l3_links: List[L3Entity]) -> Dict[Tuple[int, int], L3Entity]:
-        """Build index of L3 entities by (start, end) position"""
+    def _build_l3_index(self, l3_links: list[L3Entity]) -> dict[tuple[int, int], L3Entity]:
+        """Build index of L3 entities by (start, end) position."""
         index = {}
         for entity in l3_links:
             key = (entity.start, entity.end)
@@ -179,13 +175,10 @@ class L0Component(BaseComponent[L0Config]):
         return index
 
     def _get_candidates_for_mention(
-        self,
-        mention_idx: int,
-        l1_mention: L1Entity,
-        all_candidates: List[DatabaseRecord]
-    ) -> List[DatabaseRecord]:
+        self, mention_idx: int, l1_mention: L1Entity, all_candidates: list[DatabaseRecord]
+    ) -> list[DatabaseRecord]:
         """
-        Get candidates for specific mention
+        Get candidates for specific mention.
 
         Note: L2 returns candidates grouped per text. We need to match by text content.
         """
@@ -211,12 +204,12 @@ class L0Component(BaseComponent[L0Config]):
     def _find_linked_entity(
         self,
         l1_mention: L1Entity,
-        l3_by_position: Dict[Tuple[int, int], L3Entity],
-        candidates: List[DatabaseRecord],
-        template: str = "{label}"
-    ) -> Optional[LinkedEntity]:
+        l3_by_position: dict[tuple[int, int], L3Entity],
+        candidates: list[DatabaseRecord],
+        template: str = "{label}",
+    ) -> LinkedEntity | None:
         """
-        Find if this L1 mention was linked in L3
+        Find if this L1 mention was linked in L3.
 
         Strategy:
         1. Look up L3 entity by position (start, end)
@@ -231,13 +224,13 @@ class L0Component(BaseComponent[L0Config]):
     def _find_linked_entity_with_position(
         self,
         l1_mention: L1Entity,
-        l3_by_position: Dict[Tuple[int, int], L3Entity],
-        candidates: List[DatabaseRecord],
+        l3_by_position: dict[tuple[int, int], L3Entity],
+        candidates: list[DatabaseRecord],
         template: str = "{label}",
-        tolerance: int = 2
-    ) -> Tuple[Optional[LinkedEntity], Optional[Tuple[int, int]]]:
+        tolerance: int = 2,
+    ) -> tuple[LinkedEntity | None, tuple[int, int] | None]:
         """
-        Find if this L1 mention was linked in L3, and return the matched position
+        Find if this L1 mention was linked in L3, and return the matched position.
 
         Returns:
             Tuple of (LinkedEntity or None, matched position tuple or None)
@@ -267,7 +260,7 @@ class L0Component(BaseComponent[L0Config]):
                 confidence=l3_entity.score,
                 start=l3_entity.start,
                 end=l3_entity.end,
-                matched_text=l3_entity.text
+                matched_text=l3_entity.text,
             ), matched_key
 
         return LinkedEntity(
@@ -276,17 +269,17 @@ class L0Component(BaseComponent[L0Config]):
             confidence=l3_entity.score,
             start=l3_entity.start,
             end=l3_entity.end,
-            matched_text=l3_entity.text
+            matched_text=l3_entity.text,
         ), matched_key
 
     def _fuzzy_position_match(
         self,
         start: int,
         end: int,
-        l3_by_position: Dict[Tuple[int, int], L3Entity],
-        tolerance: int = 2
-    ) -> Optional[L3Entity]:
-        """Find L3 entity with position close to given range"""
+        l3_by_position: dict[tuple[int, int], L3Entity],
+        tolerance: int = 2,
+    ) -> L3Entity | None:
+        """Find L3 entity with position close to given range."""
         entity, _ = self._fuzzy_position_match_with_key(start, end, l3_by_position, tolerance)
         return entity
 
@@ -294,10 +287,10 @@ class L0Component(BaseComponent[L0Config]):
         self,
         start: int,
         end: int,
-        l3_by_position: Dict[Tuple[int, int], L3Entity],
-        tolerance: int = 2
-    ) -> Tuple[Optional[L3Entity], Optional[Tuple[int, int]]]:
-        """Find L3 entity with position close to given range, return with its key"""
+        l3_by_position: dict[tuple[int, int], L3Entity],
+        tolerance: int = 2,
+    ) -> tuple[L3Entity | None, tuple[int, int] | None]:
+        """Find L3 entity with position close to given range, return with its key."""
         for (l3_start, l3_end), entity in l3_by_position.items():
             if abs(l3_start - start) <= tolerance and abs(l3_end - end) <= tolerance:
                 return entity, (l3_start, l3_end)
@@ -305,10 +298,10 @@ class L0Component(BaseComponent[L0Config]):
 
     def _build_candidate_scores(
         self,
-        class_probs: Dict[str, float],
-        candidates: List[DatabaseRecord],
-        template: str = "{label}"
-    ) -> Dict[str, float]:
+        class_probs: dict[str, float],
+        candidates: list[DatabaseRecord],
+        template: str = "{label}",
+    ) -> dict[str, float]:
         """
         Map L3 class_probs (label -> probability) to candidate entity_ids.
 
@@ -328,13 +321,10 @@ class L0Component(BaseComponent[L0Config]):
         return scores
 
     def _match_candidate_by_label(
-        self,
-        l3_label: str,
-        candidates: List[DatabaseRecord],
-        template: str = "{label}"
-    ) -> Optional[DatabaseRecord]:
+        self, l3_label: str, candidates: list[DatabaseRecord], template: str = "{label}"
+    ) -> DatabaseRecord | None:
         """
-        Match L3 label with L2 candidate using the same template
+        Match L3 label with L2 candidate using the same template.
 
         Uses the schema template to format candidate labels the same way L3 did,
         enabling exact matching.
@@ -358,16 +348,16 @@ class L0Component(BaseComponent[L0Config]):
         for candidate in candidates:
             try:
                 # Format candidate using same template as L3
-                if hasattr(candidate, 'dict'):
+                if hasattr(candidate, "dict"):
                     cand_dict = candidate.dict()
                 else:
                     cand_dict = {
-                        'label': candidate.label,
-                        'description': getattr(candidate, 'description', ''),
-                        'entity_id': getattr(candidate, 'entity_id', ''),
-                        'entity_type': getattr(candidate, 'entity_type', ''),
-                        'popularity': getattr(candidate, 'popularity', 0),
-                        'aliases': getattr(candidate, 'aliases', [])
+                        "label": candidate.label,
+                        "description": getattr(candidate, "description", ""),
+                        "entity_id": getattr(candidate, "entity_id", ""),
+                        "entity_type": getattr(candidate, "entity_type", ""),
+                        "popularity": getattr(candidate, "popularity", 0),
+                        "aliases": getattr(candidate, "aliases", []),
                     }
 
                 formatted_label = template.format(**cand_dict)
@@ -382,7 +372,7 @@ class L0Component(BaseComponent[L0Config]):
 
         # Check aliases for exact match
         for candidate in candidates:
-            for alias in getattr(candidate, 'aliases', []):
+            for alias in getattr(candidate, "aliases", []):
                 if alias.lower().strip() == l3_label_lower:
                     return candidate
 
@@ -395,11 +385,9 @@ class L0Component(BaseComponent[L0Config]):
         return None
 
     def _determine_stage(
-        self,
-        candidates: List[DatabaseRecord],
-        linked_entity: Optional[LinkedEntity]
+        self, candidates: list[DatabaseRecord], linked_entity: LinkedEntity | None
     ) -> str:
-        """Determine which pipeline stage was last successful"""
+        """Determine which pipeline stage was last successful."""
         if linked_entity:
             return "l3_linked"
         elif candidates:
@@ -408,16 +396,14 @@ class L0Component(BaseComponent[L0Config]):
             return "l1_only"
 
     def filter_by_confidence(
-        self,
-        entities: List[List[L0Entity]],
-        min_confidence: float = None
-    ) -> List[List[L0Entity]]:
-        """Filter entities by linking confidence"""
+        self, entities: list[list[L0Entity]], min_confidence: float | None = None
+    ) -> list[list[L0Entity]]:
+        """Filter entities by linking confidence."""
         threshold = min_confidence if min_confidence is not None else self.config.min_confidence
 
         filtered = []
         for text_entities in entities:
-             # Keep linked entities above threshold OR keep unlinked if configured
+            # Keep linked entities above threshold OR keep unlinked if configured
             filtered_text = []
             for e in text_entities:
                 if e.linked_entity:
@@ -425,25 +411,25 @@ class L0Component(BaseComponent[L0Config]):
                         filtered_text.append(e)
                 elif self.config.include_unlinked:
                     filtered_text.append(e)
-            
+
             filtered.append(filtered_text)
 
         return filtered
 
-    def sort_by_confidence(self, entities: List[List[L0Entity]]) -> List[List[L0Entity]]:
-        """Sort entities by linking confidence (descending)"""
+    def sort_by_confidence(self, entities: list[list[L0Entity]]) -> list[list[L0Entity]]:
+        """Sort entities by linking confidence (descending)."""
         sorted_results = []
         for text_entities in entities:
             sorted_text = sorted(
                 text_entities,
                 key=lambda e: e.linked_entity.confidence if e.linked_entity else 0.0,
-                reverse=True
+                reverse=True,
             )
             sorted_results.append(sorted_text)
         return sorted_results
 
-    def calculate_stats(self, entities: List[List[L0Entity]]) -> dict:
-        """Calculate pipeline statistics"""
+    def calculate_stats(self, entities: list[list[L0Entity]]) -> dict:
+        """Calculate pipeline statistics."""
         total = 0
         linked = 0
         unlinked = 0
@@ -479,6 +465,6 @@ class L0Component(BaseComponent[L0Config]):
                 "l1_only": l1_only,
                 "l2_found": l2_found,
                 "l3_linked": l3_linked,
-                "l3_only": l3_only
-            }
+                "l3_only": l3_only,
+            },
         }

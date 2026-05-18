@@ -1,16 +1,18 @@
-from typing import Any, List
+from typing import Any
+
 from glinker.core.base import BaseProcessor
-from glinker.core.registry import processor_registry
-from .models import L0Config, L0Input, L0Output, L0Entity
-from .component import L0Component
 from glinker.l1.models import L1Entity
 from glinker.l2.models import DatabaseRecord
 from glinker.l3.models import L3Entity
+from glinker.core.registry import processor_registry
+
+from .models import L0Input, L0Config, L0Output
+from .component import L0Component
 
 
 class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):
     """
-    L0 aggregation processor - combines outputs from all pipeline layers
+    L0 aggregation processor - combines outputs from all pipeline layers.
 
     This processor aggregates information from:
     - L1: Entity mentions (text, position, context)
@@ -24,7 +26,7 @@ class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):
         self,
         config: L0Config,
         component: L0Component,
-        pipeline: list[tuple[str, dict[str, Any]]] = None
+        pipeline: list[tuple[str, dict[str, Any]]] | None = None,
     ):
         super().__init__(config, component, pipeline)
         self._validate_pipeline()
@@ -35,18 +37,18 @@ class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):
             ("aggregate", {}),
             ("filter_by_confidence", {}),
             ("sort_by_confidence", {}),
-            ("calculate_stats", {})
+            ("calculate_stats", {}),
         ]
 
     def __call__(
         self,
-        l1_entities: List[List[L1Entity]] = None,
-        l2_candidates: List[List[DatabaseRecord]] = None,
-        l3_entities: List[List[L3Entity]] = None,
-        input_data: L0Input = None
+        l1_entities: list[list[L1Entity]] | None = None,
+        l2_candidates: list[list[DatabaseRecord]] | None = None,
+        l3_entities: list[list[L3Entity]] | None = None,
+        input_data: L0Input = None,
     ) -> L0Output:
         """
-        Process and aggregate outputs from L1, L2, L3
+        Process and aggregate outputs from L1, L2, L3.
 
         Args:
             l1_entities: Entities from L1 (mention extraction)
@@ -57,7 +59,6 @@ class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):
         Returns:
             L0Output with aggregated entities and statistics
         """
-
         # Support both direct params and L0Input
         if input_data is not None:
             l1_entities = input_data.l1_entities
@@ -75,7 +76,7 @@ class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):
             l1_entities = [[] for _ in l3_entities]
 
         # Pass schema template to component for matching
-        template = self.schema.get('template', '{label}') if self.schema else '{label}'
+        template = self.schema.get("template", "{label}") if self.schema else "{label}"
 
         # Execute aggregation pipeline
         aggregated_entities = self.component.aggregate(
@@ -101,8 +102,8 @@ class L0Processor(BaseProcessor[L0Config, L0Input, L0Output]):
 
 
 @processor_registry.register("l0_aggregator")
-def create_l0_processor(config_dict: dict, pipeline: list = None) -> L0Processor:
-    """Factory: creates component + processor"""
+def create_l0_processor(config_dict: dict, pipeline: list | None = None) -> L0Processor:
+    """Factory: creates component + processor."""
     config = L0Config(**config_dict)
     component = L0Component(config)
     return L0Processor(config, component, pipeline)

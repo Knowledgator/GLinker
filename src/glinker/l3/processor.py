@@ -1,34 +1,33 @@
-from typing import Any, List, Optional
+from typing import Any
+
 import torch
+
 from glinker.core.base import BaseProcessor
 from glinker.core.registry import processor_registry
-from .models import L3Config, L3Input, L3Output, L3Entity
+
+from .models import L3Input, L3Config, L3Entity, L3Output
 from .component import L3Component
 
 
 class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
-    """GLiNER entity linking processor"""
+    """GLiNER entity linking processor."""
 
     def __init__(
         self,
         config: L3Config,
         component: L3Component,
-        pipeline: list[tuple[str, dict[str, Any]]] = None
+        pipeline: list[tuple[str, dict[str, Any]]] | None = None,
     ):
         super().__init__(config, component, pipeline)
         self._validate_pipeline()
         self.schema = {}
         self._l2_processor = None  # Will be set by DAG executor for cache write-back
-    
+
     def _default_pipeline(self) -> list[tuple[str, dict[str, Any]]]:
-        return [
-            ("predict_entities", {}),
-            ("filter_by_score", {}),
-            ("sort_by_position", {})
-        ]
-    
+        return [("predict_entities", {}), ("filter_by_score", {}), ("sort_by_position", {})]
+
     @staticmethod
-    def _build_input_spans(l1_entities_for_text: List[Any]) -> List[List[dict]]:
+    def _build_input_spans(l1_entities_for_text: list[Any]) -> list[list[dict]]:
         """Convert L1 entities to GLiNER input_spans format.
 
         Args:
@@ -43,12 +42,12 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
 
     def __call__(
         self,
-        texts: List[str] = None,
-        candidates: List[List[Any]] = None,
-        l1_entities: List[List[Any]] = None,
-        input_data: L3Input = None
+        texts: list[str] | None = None,
+        candidates: list[list[Any]] | None = None,
+        l1_entities: list[list[Any]] | None = None,
+        input_data: L3Input = None,
     ) -> L3Output:
-        """Process texts with candidate labels
+        """Process texts with candidate labels.
 
         Args:
             texts: List of input texts
@@ -57,7 +56,6 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                          so L3 predicts on the same spans extracted in L1
             input_data: Alternative L3Input object
         """
-
         # Support both direct params and L3Input
         if texts is not None and candidates is not None:
             texts_to_process = texts
@@ -71,9 +69,8 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         all_entities = []
 
         # Detect shared candidates (all texts use the same list, e.g. simple pipeline)
-        shared = (
-            len(candidates_to_process) > 1
-            and all(c is candidates_to_process[0] for c in candidates_to_process[1:])
+        shared = len(candidates_to_process) > 1 and all(
+            c is candidates_to_process[0] for c in candidates_to_process[1:]
         )
 
         # Pre-compute labels & embeddings once when candidates are shared
@@ -85,8 +82,8 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         if shared:
             ref_candidates = candidates_to_process[0]
             if self.schema:
-                shared_labels, shared_label_to_candidate = (
-                    self._create_gliner_labels_with_mapping(ref_candidates)
+                shared_labels, shared_label_to_candidate = self._create_gliner_labels_with_mapping(
+                    ref_candidates
                 )
             else:
                 shared_labels = [self._extract_label(c) for c in ref_candidates]
@@ -102,7 +99,9 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                     ref_candidates, shared_labels, shared_label_to_candidate
                 )
 
-        for idx, (text, text_candidates) in enumerate(zip(texts_to_process, candidates_to_process)):
+        for idx, (text, text_candidates) in enumerate(
+            zip(texts_to_process, candidates_to_process, strict=False)
+        ):
             # Build input_spans from L1 entities if available
             input_spans = None
             if l1_entities is not None and idx < len(l1_entities):
@@ -118,7 +117,9 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
             else:
                 # Create labels from candidates (per-text)
                 if self.schema:
-                    labels, label_to_candidate = self._create_gliner_labels_with_mapping(text_candidates)
+                    labels, label_to_candidate = self._create_gliner_labels_with_mapping(
+                        text_candidates
+                    )
                 else:
                     labels = [self._extract_label(c) for c in text_candidates]
                     label_to_candidate = {}
@@ -130,7 +131,9 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                 )
                 embeddings = None
                 if use_precomputed:
-                    embeddings = self._get_embeddings_tensor(text_candidates, labels, label_to_candidate)
+                    embeddings = self._get_embeddings_tensor(
+                        text_candidates, labels, label_to_candidate
+                    )
 
             if use_precomputed and embeddings is not None:
                 entities = self.component.predict_with_embeddings(
@@ -150,19 +153,15 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                 entities = method(entities, **kwargs)
 
             # Apply ranking if configured
-            if self.schema.get('ranking'):
+            if self.schema.get("ranking"):
                 entities = self._rank_entities(entities, text_candidates)
 
             all_entities.append(entities)
 
         return L3Output(entities=all_entities)
 
-    def _can_use_precomputed(
-        self,
-        candidates: List[Any],
-        label_to_candidate: dict
-    ) -> bool:
-        """Check if all candidates have compatible precomputed embeddings"""
+    def _can_use_precomputed(self, candidates: list[Any], label_to_candidate: dict) -> bool:
+        """Check if all candidates have compatible precomputed embeddings."""
         if not candidates:
             return False
 
@@ -170,29 +169,26 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
 
         for candidate in candidates:
             # Check if candidate has embedding
-            embedding = getattr(candidate, 'embedding', None)
+            embedding = getattr(candidate, "embedding", None)
             if embedding is None:
                 return False
 
             # Check if model matches
-            model_id = getattr(candidate, 'embedding_model_id', None)
+            model_id = getattr(candidate, "embedding_model_id", None)
             if model_id != expected_model:
                 return False
 
         return True
 
     def _get_embeddings_tensor(
-        self,
-        candidates: List[Any],
-        labels: List[str],
-        label_to_candidate: dict
+        self, candidates: list[Any], labels: list[str], label_to_candidate: dict
     ) -> torch.Tensor:
-        """Build embeddings tensor from candidates in same order as labels"""
+        """Build embeddings tensor from candidates in same order as labels."""
         embeddings = []
 
         for label in labels:
             candidate = label_to_candidate.get(label)
-            if candidate and hasattr(candidate, 'embedding') and candidate.embedding:
+            if candidate and hasattr(candidate, "embedding") and candidate.embedding:
                 embeddings.append(candidate.embedding)
             else:
                 # Should not happen if _can_use_precomputed returned True
@@ -200,13 +196,8 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
 
         return torch.tensor(embeddings, device=self.component.device)
 
-    def _cache_embeddings(
-        self,
-        candidates: List[Any],
-        labels: List[str],
-        label_to_candidate: dict
-    ):
-        """Compute and cache embeddings for candidates without them"""
+    def _cache_embeddings(self, candidates: list[Any], labels: list[str], label_to_candidate: dict):
+        """Compute and cache embeddings for candidates without them."""
         if not self._l2_processor:
             return
 
@@ -215,7 +206,7 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         to_compute_ids = []
 
         for candidate in candidates:
-            if not getattr(candidate, 'embedding', None):
+            if not getattr(candidate, "embedding", None):
                 to_compute.append(candidate)
                 to_compute_ids.append(candidate.entity_id)
 
@@ -223,13 +214,13 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
             return
 
         # Format labels for these candidates
-        template = self.schema.get('template', '{label}')
+        template = self.schema.get("template", "{label}")
         compute_labels = []
         for candidate in to_compute:
             try:
-                if hasattr(candidate, 'model_dump'):
+                if hasattr(candidate, "model_dump"):
                     formatted = template.format(**candidate.model_dump())
-                elif hasattr(candidate, 'dict'):
+                elif hasattr(candidate, "dict"):
                     formatted = template.format(**candidate.dict())
                 else:
                     formatted = candidate.label
@@ -241,39 +232,37 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         embeddings = self.component.encode_labels(compute_labels)
 
         # Update L2 layer
-        if hasattr(self._l2_processor, 'component'):
+        if hasattr(self._l2_processor, "component"):
             for layer in self._l2_processor.component.layers:
                 if layer.is_available():
                     layer.update_embeddings(
-                        to_compute_ids,
-                        embeddings.tolist(),
-                        self.config.model_name
+                        to_compute_ids, embeddings.tolist(), self.config.model_name
                     )
                     break  # Update first available layer
-    
+
     def _extract_label(self, candidate: Any) -> str:
-        """Extract label from candidate"""
-        if hasattr(candidate, 'label'):
+        """Extract label from candidate."""
+        if hasattr(candidate, "label"):
             return candidate.label
         return str(candidate)
 
-    def _create_gliner_labels_with_mapping(self, candidates: List[Any]) -> tuple:
+    def _create_gliner_labels_with_mapping(self, candidates: list[Any]) -> tuple:
         """
         Create GLiNER labels using schema template and return label->candidate mapping.
 
         Returns:
             tuple: (labels: List[str], label_to_candidate: dict)
         """
-        template = self.schema.get('template', '{label}')
+        template = self.schema.get("template", "{label}")
         labels = []
         label_to_candidate = {}
         seen = set()
 
         for candidate in candidates:
             try:
-                if hasattr(candidate, 'model_dump'):
+                if hasattr(candidate, "model_dump"):
                     cand_dict = candidate.model_dump()
-                elif hasattr(candidate, 'dict'):
+                elif hasattr(candidate, "dict"):
                     cand_dict = candidate.dict()
                 elif isinstance(candidate, dict):
                     cand_dict = candidate
@@ -291,7 +280,7 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                     label_to_candidate[label] = candidate
                     seen.add(label_lower)
             except (KeyError, AttributeError):
-                if hasattr(candidate, 'label'):
+                if hasattr(candidate, "label"):
                     if candidate.label.lower() not in seen:
                         labels.append(candidate.label)
                         label_to_candidate[candidate.label] = candidate
@@ -299,34 +288,34 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
 
         return labels, label_to_candidate
 
-    def _create_gliner_labels(self, candidates: List[Any]) -> List[str]:
-        """Create GLiNER labels using schema template (legacy, for compatibility)"""
+    def _create_gliner_labels(self, candidates: list[Any]) -> list[str]:
+        """Create GLiNER labels using schema template (legacy, for compatibility)."""
         labels, _ = self._create_gliner_labels_with_mapping(candidates)
         return labels
-    
-    def _rank_entities(self, entities: List[L3Entity], candidates: List[Any]) -> List[L3Entity]:
-        """Re-rank entities using multiple scoring factors"""
+
+    def _rank_entities(self, entities: list[L3Entity], candidates: list[Any]) -> list[L3Entity]:
+        """Re-rank entities using multiple scoring factors."""
         # Build label to candidate mapping
         label_to_candidate = {}
         for c in candidates:
-            if hasattr(c, 'label'):
+            if hasattr(c, "label"):
                 label_to_candidate[c.label] = c
-                if hasattr(c, 'aliases'):
+                if hasattr(c, "aliases"):
                     for alias in c.aliases:
                         if alias not in label_to_candidate:
                             label_to_candidate[alias] = c
-        
+
         # Calculate weighted scores
         for entity in entities:
             total_score = 0.0
             total_weight = 0.0
-            
-            for rank_spec in self.schema['ranking']:
-                field = rank_spec['field']
-                weight = rank_spec['weight']
+
+            for rank_spec in self.schema["ranking"]:
+                field = rank_spec["field"]
+                weight = rank_spec["weight"]
                 total_weight += weight
-                
-                if field == 'gliner_score':
+
+                if field == "gliner_score":
                     total_score += entity.score * weight
                 else:
                     candidate = label_to_candidate.get(entity.label)
@@ -335,16 +324,16 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
                         if isinstance(value, (int, float)):
                             normalized = min(value / 1000000.0, 1.0)
                             total_score += normalized * weight
-            
+
             if total_weight > 0:
                 entity.score = total_score / total_weight
-        
+
         return sorted(entities, key=lambda x: x.score, reverse=True)
 
 
 @processor_registry.register("l3_batch")
-def create_l3_processor(config_dict: dict, pipeline: list = None) -> L3Processor:
-    """Factory: creates component + processor"""
+def create_l3_processor(config_dict: dict, pipeline: list | None = None) -> L3Processor:
+    """Factory: creates component + processor."""
     config = L3Config(**config_dict)
     component = L3Component(config)
     return L3Processor(config, component, pipeline)

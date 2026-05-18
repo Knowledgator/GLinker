@@ -4,9 +4,10 @@ Pipeline configuration builder for easy setup.
 ConfigBuilder: Unified builder with automatic defaults and full customization support.
 """
 
-from typing import List, Optional, Dict, Any, Literal
-import yaml
+from typing import Any, Literal
 from pathlib import Path
+
+import yaml
 
 
 class ConfigBuilder:
@@ -35,7 +36,7 @@ class ConfigBuilder:
     """
 
     class L1Builder:
-        """L1 configuration builder"""
+        """L1 configuration builder."""
 
         def __init__(self, parent):
             self.parent = parent
@@ -48,9 +49,9 @@ class ConfigBuilder:
             max_right_context: int = 50,
             max_left_context: int = 50,
             min_entity_length: int = 2,
-            include_noun_chunks: bool = False
+            include_noun_chunks: bool = False,
         ) -> "ConfigBuilder":
-            """Configure L1 with spaCy NER"""
+            """Configure L1 with spaCy NER."""
             self.parent._l1_type = "l1_spacy"
             self.parent._l1_config = {
                 "model": model,
@@ -59,15 +60,15 @@ class ConfigBuilder:
                 "max_right_context": max_right_context,
                 "max_left_context": max_left_context,
                 "min_entity_length": min_entity_length,
-                "include_noun_chunks": include_noun_chunks
+                "include_noun_chunks": include_noun_chunks,
             }
             return self.parent
 
         def gliner(
             self,
             model: str,
-            labels: List[str],
-            token: Optional[str] = None,
+            labels: list[str],
+            token: str | None = None,
             device: str = "cpu",
             threshold: float = 0.3,
             flat_ner: bool = True,
@@ -77,9 +78,9 @@ class ConfigBuilder:
             max_left_context: int = 50,
             min_entity_length: int = 2,
             use_precomputed_embeddings: bool = False,
-            max_length: Optional[int] = 512
+            max_length: int | None = 512,
         ) -> "ConfigBuilder":
-            """Configure L1 with GLiNER"""
+            """Configure L1 with GLiNER."""
             self.parent._l1_type = "l1_gliner"
             self.parent._l1_config = {
                 "model": model,
@@ -94,12 +95,12 @@ class ConfigBuilder:
                 "max_left_context": max_left_context,
                 "min_entity_length": min_entity_length,
                 "use_precomputed_embeddings": use_precomputed_embeddings,
-                "max_length": max_length
+                "max_length": max_length,
             }
             return self.parent
 
     class L2Builder:
-        """L2 configuration builder"""
+        """L2 configuration builder."""
 
         def __init__(self, parent):
             self.parent = parent
@@ -108,12 +109,12 @@ class ConfigBuilder:
             self,
             layer_type: Literal["dict", "redis", "elasticsearch", "postgres"],
             priority: int = 0,
-            write: bool = None,
-            search_mode: List[str] = None,
-            ttl: int = None,
-            cache_policy: str = None,
-            fuzzy_similarity: float = None,
-            **db_config
+            write: bool | None = None,
+            search_mode: list[str] | None = None,
+            ttl: int | None = None,
+            cache_policy: str | None = None,
+            fuzzy_similarity: float | None = None,
+            **db_config,
         ) -> "ConfigBuilder":
             """
             Add a database layer to L2.
@@ -142,7 +143,9 @@ class ConfigBuilder:
                 search_mode = ["exact"] if layer_type == "redis" else ["exact", "fuzzy"]
 
             if ttl is None:
-                ttl = {"dict": 0, "redis": 3600, "elasticsearch": 86400, "postgres": 0}.get(layer_type, 0)
+                ttl = {"dict": 0, "redis": 3600, "elasticsearch": 86400, "postgres": 0}.get(
+                    layer_type, 0
+                )
 
             if cache_policy is None:
                 cache_policy = "miss" if layer_type == "elasticsearch" else "always"
@@ -155,7 +158,7 @@ class ConfigBuilder:
                 "search_mode": search_mode,
                 "ttl": ttl,
                 "cache_policy": cache_policy,
-                "field_mapping": self._default_field_mapping()
+                "field_mapping": self._default_field_mapping(),
             }
 
             # Add database-specific config
@@ -166,14 +169,14 @@ class ConfigBuilder:
                     "max_distance": 64,
                     "min_similarity": fuzzy_similarity,
                     "n_gram_size": 3,
-                    "prefix_length": 1
+                    "prefix_length": 1,
                 }
 
             elif layer_type == "redis":
                 layer["config"] = {
                     "host": db_config.get("host", "localhost"),
                     "port": db_config.get("port", 6379),
-                    "db": db_config.get("db", 0)
+                    "db": db_config.get("db", 0),
                 }
 
             elif layer_type == "elasticsearch":
@@ -181,7 +184,7 @@ class ConfigBuilder:
                     fuzzy_similarity = 0.3
                 layer["config"] = {
                     "hosts": db_config.get("hosts", ["http://localhost:9200"]),
-                    "index_name": db_config.get("index_name", "entities")
+                    "index_name": db_config.get("index_name", "entities"),
                 }
                 layer["fuzzy"] = {"min_similarity": fuzzy_similarity}
 
@@ -193,7 +196,7 @@ class ConfigBuilder:
                     "port": db_config.get("port", 5432),
                     "database": db_config.get("database", "entities_db"),
                     "user": db_config.get("user", "postgres"),
-                    "password": db_config.get("password", "postgres")
+                    "password": db_config.get("password", "postgres"),
                 }
                 layer["fuzzy"] = {"min_similarity": fuzzy_similarity}
 
@@ -205,14 +208,14 @@ class ConfigBuilder:
             enabled: bool = True,
             model_name: str = "knowledgator/gliner-linker-large-v1.0",
             dim: int = 768,
-            precompute_on_load: bool = False
+            precompute_on_load: bool = False,
         ) -> "ConfigBuilder":
-            """Configure embeddings for L2 (BiEncoder support)"""
+            """Configure embeddings for L2 (BiEncoder support)."""
             self.parent._l2_embeddings = {
                 "enabled": enabled,
                 "model_name": model_name,
                 "dim": dim,
-                "precompute_on_load": precompute_on_load
+                "precompute_on_load": precompute_on_load,
             }
 
             # Add embedding fields to all layers
@@ -222,15 +225,15 @@ class ConfigBuilder:
 
             return self.parent
 
-        def _default_field_mapping(self) -> Dict[str, str]:
-            """Default field mapping"""
+        def _default_field_mapping(self) -> dict[str, str]:
+            """Default field mapping."""
             mapping = {
                 "entity_id": "entity_id",
                 "label": "label",
                 "aliases": "aliases",
                 "description": "description",
                 "entity_type": "entity_type",
-                "popularity": "popularity"
+                "popularity": "popularity",
             }
 
             # Add embedding fields if embeddings enabled
@@ -241,7 +244,7 @@ class ConfigBuilder:
             return mapping
 
     class L3Builder:
-        """L3 configuration builder"""
+        """L3 configuration builder."""
 
         def __init__(self, parent):
             self.parent = parent
@@ -249,7 +252,7 @@ class ConfigBuilder:
         def configure(
             self,
             model: str = "knowledgator/gliner-linker-large-v1.0",
-            token: Optional[str] = None,
+            token: str | None = None,
             device: str = "cpu",
             threshold: float = 0.5,
             flat_ner: bool = True,
@@ -257,9 +260,9 @@ class ConfigBuilder:
             batch_size: int = 1,
             use_precomputed_embeddings: bool = False,
             cache_embeddings: bool = False,
-            max_length: Optional[int] = 512
+            max_length: int | None = 512,
         ) -> "ConfigBuilder":
-            """Configure L3 entity disambiguation"""
+            """Configure L3 entity disambiguation."""
             self.parent._l3_config = {
                 "model_name": model,
                 "huggingface_token": token,
@@ -270,12 +273,12 @@ class ConfigBuilder:
                 "batch_size": batch_size,
                 "use_precomputed_embeddings": use_precomputed_embeddings,
                 "cache_embeddings": cache_embeddings,
-                "max_length": max_length
+                "max_length": max_length,
             }
             return self.parent
 
     class L4Builder:
-        """L4 configuration builder (optional GLiNER reranker with chunking)"""
+        """L4 configuration builder (optional GLiNER reranker with chunking)."""
 
         def __init__(self, parent):
             self.parent = parent
@@ -283,13 +286,13 @@ class ConfigBuilder:
         def configure(
             self,
             model: str = "knowledgator/gliner-linker-large-v1.0",
-            token: Optional[str] = None,
+            token: str | None = None,
             device: str = "cpu",
             threshold: float = 0.5,
             flat_ner: bool = True,
             multi_label: bool = False,
             max_labels: int = 20,
-            max_length: Optional[int] = 512
+            max_length: int | None = 512,
         ) -> "ConfigBuilder":
             """Configure L4 GLiNER reranker with candidate chunking.
 
@@ -307,12 +310,12 @@ class ConfigBuilder:
                 "flat_ner": flat_ner,
                 "multi_label": multi_label,
                 "max_labels": max_labels,
-                "max_length": max_length
+                "max_length": max_length,
             }
             return self.parent
 
     class L0Builder:
-        """L0 configuration builder"""
+        """L0 configuration builder."""
 
         def __init__(self, parent):
             self.parent = parent
@@ -323,19 +326,19 @@ class ConfigBuilder:
             include_unlinked: bool = True,
             return_all_candidates: bool = False,
             strict_matching: bool = True,
-            position_tolerance: int = 2
+            position_tolerance: int = 2,
         ) -> "ConfigBuilder":
-            """Configure L0 aggregation parameters"""
+            """Configure L0 aggregation parameters."""
             self.parent._l0_config = {
                 "min_confidence": min_confidence,
                 "include_unlinked": include_unlinked,
                 "return_all_candidates": return_all_candidates,
                 "strict_matching": strict_matching,
-                "position_tolerance": position_tolerance
+                "position_tolerance": position_tolerance,
             }
             return self.parent
 
-    def __init__(self, name: str = "pipeline", description: str = None):
+    def __init__(self, name: str = "pipeline", description: str | None = None):
         self.name = name
         self.description = description or f"{name} - auto-generated configuration"
         self._l1_config = None
@@ -349,7 +352,7 @@ class ConfigBuilder:
             "include_unlinked": True,
             "return_all_candidates": False,
             "strict_matching": True,
-            "position_tolerance": 2
+            "position_tolerance": 2,
         }
         self._schema_template = "{label}: {description}"
 
@@ -361,11 +364,11 @@ class ConfigBuilder:
         self.l0 = self.L0Builder(self)
 
     def set_schema_template(self, template: str) -> "ConfigBuilder":
-        """Set label formatting template for L2/L3/L0"""
+        """Set label formatting template for L2/L3/L0."""
         self._schema_template = template
         return self
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """
         Get pipeline configuration as Python dictionary.
 
@@ -374,44 +377,48 @@ class ConfigBuilder:
         """
         return self.build()
 
-    def build(self) -> Dict[str, Any]:
-        """Build pipeline configuration dictionary"""
+    def build(self) -> dict[str, Any]:
+        """Build pipeline configuration dictionary."""
         if not self._l1_type or not self._l1_config:
-            raise ValueError("L1 configuration is required. Call builder.l1.spacy() or builder.l1.gliner() first.")
+            raise ValueError(
+                "L1 configuration is required. Call builder.l1.spacy() or builder.l1.gliner() first."
+            )
 
         if not self._l3_config:
             raise ValueError("L3 configuration is required. Call builder.l3.configure() first.")
 
         # Auto-add dict layer if no L2 layers specified
         if not self._l2_layers:
-            self._l2_layers.append({
-                "type": "dict",
-                "priority": 0,
-                "write": True,
-                "search_mode": ["exact", "fuzzy"],
-                "ttl": 0,
-                "cache_policy": "always",
-                "field_mapping": {
-                    "entity_id": "entity_id",
-                    "label": "label",
-                    "aliases": "aliases",
-                    "description": "description",
-                    "entity_type": "entity_type",
-                    "popularity": "popularity"
-                },
-                "fuzzy": {
-                    "max_distance": 64,
-                    "min_similarity": 0.6,
-                    "n_gram_size": 3,
-                    "prefix_length": 1
+            self._l2_layers.append(
+                {
+                    "type": "dict",
+                    "priority": 0,
+                    "write": True,
+                    "search_mode": ["exact", "fuzzy"],
+                    "ttl": 0,
+                    "cache_policy": "always",
+                    "field_mapping": {
+                        "entity_id": "entity_id",
+                        "label": "label",
+                        "aliases": "aliases",
+                        "description": "description",
+                        "entity_type": "entity_type",
+                        "popularity": "popularity",
+                    },
+                    "fuzzy": {
+                        "max_distance": 64,
+                        "min_similarity": 0.6,
+                        "n_gram_size": 3,
+                        "prefix_length": 1,
+                    },
                 }
-            })
+            )
 
         # Build L2 config
         l2_config = {
             "max_candidates": 10 if self._l2_embeddings else 5,
             "min_popularity": 0,
-            "layers": self._l2_layers
+            "layers": self._l2_layers,
         }
 
         if self._l2_embeddings:
@@ -422,29 +429,19 @@ class ConfigBuilder:
             {
                 "id": "l1",
                 "processor": self._l1_type,
-                "inputs": {
-                    "texts": {
-                        "source": "$input",
-                        "fields": "texts"
-                    }
-                },
+                "inputs": {"texts": {"source": "$input", "fields": "texts"}},
                 "output": {"key": "l1_result"},
-                "config": self._l1_config
+                "config": self._l1_config,
             },
             # L2 Node
             {
                 "id": "l2",
                 "processor": "l2_chain",
                 "requires": ["l1"],
-                "inputs": {
-                    "mentions": {
-                        "source": "l1_result",
-                        "fields": "entities"
-                    }
-                },
+                "inputs": {"mentions": {"source": "l1_result", "fields": "entities"}},
                 "output": {"key": "l2_result"},
                 "schema": {"template": self._schema_template},
-                "config": l2_config
+                "config": l2_config,
             },
             # L3 Node
             {
@@ -452,22 +449,13 @@ class ConfigBuilder:
                 "processor": "l3_batch",
                 "requires": ["l1", "l2"],
                 "inputs": {
-                    "texts": {
-                        "source": "$input",
-                        "fields": "texts"
-                    },
-                    "candidates": {
-                        "source": "l2_result",
-                        "fields": "candidates"
-                    },
-                    "l1_entities": {
-                        "source": "l1_result",
-                        "fields": "entities"
-                    }
+                    "texts": {"source": "$input", "fields": "texts"},
+                    "candidates": {"source": "l2_result", "fields": "candidates"},
+                    "l1_entities": {"source": "l1_result", "fields": "entities"},
                 },
                 "output": {"key": "l3_result"},
                 "schema": {"template": self._schema_template},
-                "config": self._l3_config
+                "config": self._l3_config,
             },
         ]
 
@@ -477,71 +465,53 @@ class ConfigBuilder:
 
         # Optional L4 reranker node
         if self._l4_config:
-            nodes.append({
-                "id": "l4",
-                "processor": "l4_reranker",
-                "requires": ["l1", "l2", "l3"],
-                "inputs": {
-                    "texts": {
-                        "source": "$input",
-                        "fields": "texts"
+            nodes.append(
+                {
+                    "id": "l4",
+                    "processor": "l4_reranker",
+                    "requires": ["l1", "l2", "l3"],
+                    "inputs": {
+                        "texts": {"source": "$input", "fields": "texts"},
+                        "candidates": {"source": "l2_result", "fields": "candidates"},
+                        "l1_entities": {"source": "l1_result", "fields": "entities"},
                     },
-                    "candidates": {
-                        "source": "l2_result",
-                        "fields": "candidates"
-                    },
-                    "l1_entities": {
-                        "source": "l1_result",
-                        "fields": "entities"
-                    }
-                },
-                "output": {"key": "l4_result"},
-                "schema": {"template": self._schema_template},
-                "config": self._l4_config
-            })
+                    "output": {"key": "l4_result"},
+                    "schema": {"template": self._schema_template},
+                    "config": self._l4_config,
+                }
+            )
             l0_entity_source = "l4_result"
             l0_requires.append("l4")
 
         # L0 Node
-        nodes.append({
-            "id": "l0",
-            "processor": "l0_aggregator",
-            "requires": l0_requires,
-            "inputs": {
-                "l1_entities": {
-                    "source": "l1_result",
-                    "fields": "entities"
+        nodes.append(
+            {
+                "id": "l0",
+                "processor": "l0_aggregator",
+                "requires": l0_requires,
+                "inputs": {
+                    "l1_entities": {"source": "l1_result", "fields": "entities"},
+                    "l2_candidates": {"source": "l2_result", "fields": "candidates"},
+                    "l3_entities": {"source": l0_entity_source, "fields": "entities"},
                 },
-                "l2_candidates": {
-                    "source": "l2_result",
-                    "fields": "candidates"
-                },
-                "l3_entities": {
-                    "source": l0_entity_source,
-                    "fields": "entities"
-                }
-            },
-            "output": {"key": "l0_result"},
-            "config": self._l0_config,
-            "schema": {"template": self._schema_template}
-        })
+                "output": {"key": "l0_result"},
+                "config": self._l0_config,
+                "schema": {"template": self._schema_template},
+            }
+        )
 
-        config = {
-            "name": self.name,
-            "description": self.description,
-            "nodes": nodes
-        }
+        config = {"name": self.name, "description": self.description, "nodes": nodes}
 
         return config
 
     def save(self, filepath: str) -> None:
-        """Save configuration to YAML file"""
+        """Save configuration to YAML file."""
         config = self.build()
 
         # Create directory if needed
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
 
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
         print(f"✓ Configuration saved to {filepath}")
