@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Union, Optional
+from typing import Any, Dict, List
 from pathlib import Path
 
 import yaml

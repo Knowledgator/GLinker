@@ -1,8 +1,6 @@
-from typing import Any, List, Optional
-
 from pydantic import Field
 
-from glinker.core.base import BaseInput, BaseConfig, BaseOutput
+from glinker.core.base import BaseConfig
 
 
 class L4Config(BaseConfig):

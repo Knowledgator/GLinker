@@ -1,4 +1,4 @@
-from typing import Any, List, Union
+from typing import Any, List
 
 from glinker.core.base import BaseProcessor
 from glinker.core.registry import processor_registry

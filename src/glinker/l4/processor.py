@@ -1,7 +1,7 @@
-from typing import Any, List, Optional
+from typing import Any, List
 
 from glinker.core.base import BaseProcessor
-from glinker.l3.models import L3Input, L3Entity, L3Output
+from glinker.l3.models import L3Input, L3Output
 from glinker.core.registry import processor_registry
 
 from .models import L4Config

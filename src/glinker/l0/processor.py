@@ -6,7 +6,7 @@ from glinker.l2.models import DatabaseRecord
 from glinker.l3.models import L3Entity
 from glinker.core.registry import processor_registry
 
-from .models import L0Input, L0Config, L0Entity, L0Output
+from .models import L0Input, L0Config, L0Output
 from .component import L0Component
 
 

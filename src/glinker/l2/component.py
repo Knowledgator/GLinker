@@ -1,6 +1,6 @@
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Set, Dict, List, Union
+from typing import Any, Set, Dict, List
 from pathlib import Path
 
 import redis
@@ -365,7 +365,7 @@ class RedisLayer(DatabaseLayer):
                                 r["source"] = "redis"
                                 entities.append(DatabaseRecord(**r))
                                 seen_ids.add(r.get("entity_id"))
-            except Exception as e:
+            except Exception:
                 continue
 
         return entities
@@ -405,7 +405,7 @@ class RedisLayer(DatabaseLayer):
                     self.client.setex(key, self.ttl, json.dumps(record_data))
                     count += 1
 
-            except Exception as e:
+            except Exception:
                 continue
 
         return count

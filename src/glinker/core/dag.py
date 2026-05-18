@@ -1,7 +1,7 @@
 import re
 import json
 import logging
-from typing import Any, Set, Dict, List, Union, Literal, Optional
+from typing import Any, Set, Dict, List, Literal
 from pathlib import Path
 from datetime import datetime
 from collections import OrderedDict, deque, defaultdict

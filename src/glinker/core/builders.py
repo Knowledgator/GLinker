@@ -4,7 +4,7 @@ Pipeline configuration builder for easy setup.
 ConfigBuilder: Unified builder with automatic defaults and full customization support.
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal
 from pathlib import Path
 
 import yaml

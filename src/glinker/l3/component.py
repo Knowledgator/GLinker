@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import List
 
 import torch
 from gliner import GLiNER

@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
 from glinker.core.base import BaseComponent
 from glinker.l1.models import L1Entity

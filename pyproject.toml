@@ -135,10 +135,8 @@ ignore = [
 ]
 
 unfixable = [
-    "F401",   # Unused imports
     "T201",   # Print statements
     "T203",   # pprint statements
-    "F841",   # Unused variables
 ]
 
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
