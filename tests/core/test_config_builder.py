@@ -126,7 +126,7 @@ class TestL2Builder:
         assert layer["write"] is True
         assert layer["search_mode"] == ["exact", "fuzzy"]
         assert layer["ttl"] == 0
-        assert layer["fuzzy"]["min_similarity"] == 0.6
+        assert layer["fuzzy"]["min_similarity"] == 0.75
 
     def test_l2_add_redis_layer_defaults(self):
         from glinker.core.builders import ConfigBuilder
