@@ -30,6 +30,7 @@ def mock_spacy_models():
                 "TP53": ("GENE", 0, 4),
                 "BRCA1": ("GENE", 0, 5),
                 "cancer": ("DISEASE", 0, 6),
+                "breast cancer": ("DISEASE", 0, 13),
             }
             for keyword, (label, _, _) in keywords.items():
                 if keyword in text:
@@ -46,7 +47,15 @@ def mock_spacy_models():
             mock_doc.text = text
             return mock_doc
 
+        # Mock both direct call and pipe
         mock_nlp.side_effect = mock_call
+
+        # Mock pipe() for batch processing
+        def mock_pipe(texts, batch_size=None):
+            for text in texts:
+                yield mock_call(text)
+
+        mock_nlp.pipe = mock_pipe
         mock_load.return_value = mock_nlp
         yield mock_load
 
