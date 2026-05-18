@@ -130,9 +130,46 @@ def l1_config(l1_config_dict):
 
 @pytest.fixture
 def l1_component(l1_config):
-    """L1SpacyComponent instance."""
+    """L1SpacyComponent instance with mocked spaCy model."""
     from glinker.l1.component import L1SpacyComponent
-    return L1SpacyComponent(l1_config)
+    from glinker.l1.models import L1Entity
+    from unittest.mock import MagicMock, patch
+
+    with patch('spacy.load') as mock_spacy_load:
+        # Mock spaCy model and doc
+        mock_nlp = MagicMock()
+        mock_spacy_load.return_value = mock_nlp
+
+        # Mock entity extraction
+        def mock_call(text):
+            mock_doc = MagicMock()
+            # Simple mock: find common gene/disease names
+            entities = []
+            keywords = {
+                "TP53": ("GENE", 0, 4),
+                "BRCA1": ("GENE", 0, 5),
+                "cancer": ("DISEASE", 0, 6),
+                "breast cancer": ("DISEASE", 0, 13),
+            }
+            for keyword, (label, offset_start, offset_end) in keywords.items():
+                if keyword in text:
+                    start = text.find(keyword)
+                    mock_ent = MagicMock()
+                    mock_ent.text = keyword
+                    mock_ent.label_ = label
+                    mock_ent.start_char = start
+                    mock_ent.end_char = start + len(keyword)
+                    entities.append(mock_ent)
+
+            mock_doc.ents = entities
+            mock_doc.noun_chunks = []
+            mock_doc.text = text
+            return mock_doc
+
+        mock_nlp.side_effect = mock_call
+
+        component = L1SpacyComponent(l1_config)
+        return component
 
 
 # ============================================================
@@ -251,22 +288,142 @@ def l3_config(l3_config_dict):
     return L3Config(**l3_config_dict)
 
 
-# L3 component is expensive - session scoped
-@pytest.fixture(scope="session")
-def l3_component():
-    """L3Component instance (session-scoped for efficiency)."""
+# L3 component with mocked GLiNER model
+@pytest.fixture
+def l3_component(l3_config):
+    """L3Component instance with mocked GLiNER model."""
     from glinker.l3.component import L3Component
-    from glinker.l3.models import L3Config
-    config = L3Config(
-        model_name="knowledgator/gliner-linker-large-v1.0",
-        token="hf_",
-        device="cpu",
-        threshold=0.3,
-        flat_ner=True,
-        multi_label=False,
-        max_length=512
-    )
-    return L3Component(config)
+    from glinker.l3.models import L3Entity
+    from unittest.mock import MagicMock, patch
+    import torch
+
+    with patch('glinker.l3.component.GLiNER') as mock_gliner:
+        # Mock model
+        mock_model = MagicMock()
+        mock_gliner.from_pretrained.return_value = mock_model
+
+        # Mock tokenizer for BiEncoder models
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.model_max_length = 512
+        mock_data_processor = MagicMock()
+        mock_data_processor.labels_tokenizer = mock_tokenizer
+        mock_model.data_processor = mock_data_processor
+
+        # Mock config
+        mock_config = MagicMock()
+        mock_config.labels_encoder = MagicMock()  # BiEncoder support
+        mock_model.config = mock_config
+
+        # Mock predict_entities to return realistic data
+        def mock_predict(text, labels, **kwargs):
+            # Simple mock: return one entity per label if text contains keywords
+            results = []
+            keywords = {
+                "gene": ["TP53", "BRCA1", "EGFR"],
+                "disease": ["cancer", "carcinoma"],
+                "protein": ["protein", "p53"],
+                "drug": ["aspirin", "inhibitor"]
+            }
+            for label in labels:
+                for keyword in keywords.get(label, []):
+                    if keyword.lower() in text.lower():
+                        start = text.lower().find(keyword.lower())
+                        results.append({
+                            "text": text[start:start+len(keyword)],
+                            "label": label,
+                            "start": start,
+                            "end": start + len(keyword),
+                            "score": 0.9,
+                            "class_probs": {label: 0.9}
+                        })
+            return results
+
+        mock_model.predict_entities.side_effect = mock_predict
+        mock_model.to.return_value = mock_model
+
+        # Mock encode_labels for BiEncoder
+        def mock_encode_labels(labels, batch_size=32):
+            return torch.randn(len(labels), 768)  # Mock embeddings
+        mock_model.encode_labels.side_effect = mock_encode_labels
+
+        component = L3Component(l3_config)
+        return component
+
+
+# ============================================================
+# L4 FIXTURES
+# ============================================================
+
+@pytest.fixture
+def l4_config_dict() -> Dict[str, Any]:
+    """L4 processor configuration dictionary."""
+    return {
+        "model_name": "knowledgator/gliner-linker-large-v1.0",
+        "token": "hf_",
+        "device": "cpu",
+        "threshold": 0.5,
+        "flat_ner": True,
+        "multi_label": False,
+        "max_labels": 20,
+        "max_length": 512
+    }
+
+
+@pytest.fixture
+def l4_config(l4_config_dict):
+    """L4Config instance."""
+    from glinker.l4.models import L4Config
+    return L4Config(**l4_config_dict)
+
+
+# L4 component with mocked GLiNER model
+@pytest.fixture
+def l4_component(l4_config):
+    """L4Component instance with mocked GLiNER model."""
+    from glinker.l4.component import L4Component
+    from unittest.mock import MagicMock, patch
+
+    with patch('glinker.l4.component.GLiNER') as mock_gliner:
+        # Mock model
+        mock_model = MagicMock()
+        mock_gliner.from_pretrained.return_value = mock_model
+
+        # Mock predict_entities to return realistic data
+        def mock_predict(text, labels, **kwargs):
+            # Simple mock: return one entity per label if text contains keywords
+            results = []
+            keywords = {
+                "gene": ["TP53", "BRCA1", "EGFR"],
+                "disease": ["cancer", "carcinoma"],
+                "protein": ["protein", "p53"],
+                "drug": ["aspirin", "inhibitor"]
+            }
+            for label in labels:
+                for keyword in keywords.get(label, []):
+                    if keyword.lower() in text.lower():
+                        start = text.lower().find(keyword.lower())
+                        results.append({
+                            "text": text[start:start+len(keyword)],
+                            "label": label,
+                            "start": start,
+                            "end": start + len(keyword),
+                            "score": 0.9,
+                            "class_probs": {label: 0.9}
+                        })
+            return results
+
+        mock_model.predict_entities.side_effect = mock_predict
+        mock_model.to.return_value = mock_model
+
+        component = L4Component(l4_config)
+        return component
+
+
+@pytest.fixture
+def l4_processor(l4_component, l4_config):
+    """L4Processor instance."""
+    from glinker.l4.processor import L4Processor
+    return L4Processor(l4_config, l4_component)
 
 
 # ============================================================
