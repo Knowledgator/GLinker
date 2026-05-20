@@ -239,7 +239,21 @@ class DictLayer(DatabaseLayer):
 
 
 class RedisLayer(DatabaseLayer):
-    """Redis cache layer."""
+    """Redis cache layer with optimized embedding storage.
+
+    Storage structure:
+    - entity:{label} -> entity data without embedding (fast lookup)
+    - entity:{alias} -> entity data without embedding (fast lookup)
+    - entity:emb:{entity_id} -> {embedding, embedding_model_id} (no duplication)
+
+    Benefits:
+    - Embeddings stored once per entity (not duplicated across aliases)
+    - update_embeddings() is O(M) instead of O(N×M) where:
+      - M = entities to update
+      - N = total keys in Redis (entities × aliases)
+    - Reduced memory usage for large entity databases
+    - Faster batch embedding updates
+    """
 
     def _setup(self):
         self.client = redis.Redis(
@@ -288,25 +302,59 @@ class RedisLayer(DatabaseLayer):
         return []
 
     def write_cache(self, key: str, records: List[DatabaseRecord], ttl: int):
+        """Write search results to cache.
+
+        Optimized: embeddings stored separately to avoid duplication.
+        """
         key = self.normalize_query(key)
         cache_key = f"entity:{key}"
 
         try:
-            data = json.dumps([r.dict() for r in records])
-            self.client.setex(cache_key, ttl, data)
+            # Store entity data WITHOUT embeddings
+            records_data = []
+            pipe = self.client.pipeline()
+
+            for r in records:
+                r_dict = r.dict()
+                embedding = r_dict.pop("embedding", None)
+                embedding_model_id = r_dict.pop("embedding_model_id", None)
+                records_data.append(r_dict)
+
+                # Store embedding separately if present
+                if embedding is not None:
+                    emb_key = f"entity:emb:{r.entity_id}"
+                    emb_data = json.dumps({
+                        "embedding": embedding,
+                        "embedding_model_id": embedding_model_id
+                    })
+                    pipe.setex(emb_key, ttl, emb_data)
+
+            # Store main cache data
+            data = json.dumps(records_data)
+            pipe.setex(cache_key, ttl, data)
+            pipe.execute()
+
         except Exception as e:
             print(f"[ERROR Redis] Write error: {e}")
 
     def load_bulk(
         self, entities: List[DatabaseRecord], overwrite: bool = False, batch_size: int = 1000
     ) -> int:
-        """Bulk load to Redis."""
+        """Bulk load to Redis.
+
+        Optimized: embeddings stored separately to avoid duplication across aliases.
+        Structure:
+        - entity:{label/alias} -> entity data WITHOUT embedding
+        - entity:emb:{entity_id} -> {embedding, model_id}
+        """
         count = 0
         pipe = self.client.pipeline()
 
         for entity in entities:
-            # Prepare data
+            # Prepare data WITHOUT embedding (store separately)
             entity_data = entity.dict()
+            embedding = entity_data.pop("embedding", None)
+            embedding_model_id = entity_data.pop("embedding_model_id", None)
             data_json = json.dumps(entity_data)
 
             # Store by label
@@ -321,6 +369,15 @@ class RedisLayer(DatabaseLayer):
                 if overwrite or not self.client.exists(alias_key):
                     pipe.setex(alias_key, self.ttl, data_json)
 
+            # Store embedding SEPARATELY (no duplication)
+            if embedding is not None:
+                emb_key = f"entity:emb:{entity.entity_id}"
+                emb_data = json.dumps({
+                    "embedding": embedding,
+                    "embedding_model_id": embedding_model_id
+                })
+                pipe.setex(emb_key, self.ttl, emb_data)
+
             # Execute in batches
             if len(pipe) >= batch_size:
                 pipe.execute()
@@ -333,20 +390,36 @@ class RedisLayer(DatabaseLayer):
         return count
 
     def clear(self):
-        """Clear all entity keys."""
+        """Clear all entity keys (including embeddings)."""
         for key in self.client.scan_iter(match="entity:*"):
             self.client.delete(key)
+        # Note: entity:emb:* keys are also matched by entity:* pattern
 
     def count(self) -> int:
         """Count entity keys."""
         return sum(1 for _ in self.client.scan_iter(match="entity:*"))
 
-    def get_all_entities(self) -> List[DatabaseRecord]:
-        """Get all entities from Redis (scans all entity:* keys)."""
+    def get_all_entities(self, include_embeddings: bool = False) -> List[DatabaseRecord]:
+        """Get all entities from Redis (scans all entity:* keys).
+
+        Args:
+            include_embeddings: If True, also fetch embeddings (slower)
+
+        Note: Skips entity:emb:* keys as they're fetched separately if needed.
+        """
         entities = []
         seen_ids = set()
 
         for key in self.client.scan_iter(match="entity:*"):
+            # Skip embedding keys - they're handled separately
+            if isinstance(key, bytes):
+                key_str = key.decode("utf-8")
+            else:
+                key_str = key
+
+            if key_str.startswith("entity:emb:"):
+                continue
+
             try:
                 data = self.client.get(key)
                 if data:
@@ -368,47 +441,87 @@ class RedisLayer(DatabaseLayer):
             except Exception:
                 continue
 
+        # Optionally fetch embeddings in batch
+        if include_embeddings and entities:
+            entity_ids = [e.entity_id for e in entities]
+            embeddings_map = self.get_embeddings_batch(entity_ids)
+
+            for entity in entities:
+                if entity.entity_id in embeddings_map:
+                    emb_data = embeddings_map[entity.entity_id]
+                    entity.embedding = emb_data.get("embedding")
+                    entity.embedding_model_id = emb_data.get("embedding_model_id")
+
         return entities
 
     def update_embeddings(
         self, entity_ids: List[str], embeddings: List[List[float]], model_id: str
     ) -> int:
-        """Update embeddings in Redis entities."""
+        """Update embeddings in Redis entities.
+
+        Optimized: O(M) direct access instead of O(N×M) full scan.
+        Embeddings stored separately at entity:emb:{entity_id}.
+        """
+        if not entity_ids or not embeddings:
+            return 0
+
+        pipe = self.client.pipeline()
         count = 0
-        id_to_embedding = dict(zip(entity_ids, embeddings))
 
-        for key in self.client.scan_iter(match="entity:*"):
-            try:
-                data = self.client.get(key)
-                if not data:
-                    continue
+        for entity_id, embedding in zip(entity_ids, embeddings):
+            emb_key = f"entity:emb:{entity_id}"
+            emb_data = json.dumps({
+                "embedding": embedding,
+                "embedding_model_id": model_id
+            })
+            pipe.setex(emb_key, self.ttl, emb_data)
+            count += 1
 
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
+            # Execute in batches of 1000
+            if count % 1000 == 0:
+                pipe.execute()
+                pipe = self.client.pipeline()
 
-                record_data = json.loads(data)
-                updated = False
-
-                if isinstance(record_data, dict):
-                    if record_data.get("entity_id") in id_to_embedding:
-                        record_data["embedding"] = id_to_embedding[record_data["entity_id"]]
-                        record_data["embedding_model_id"] = model_id
-                        updated = True
-                elif isinstance(record_data, list):
-                    for r in record_data:
-                        if r.get("entity_id") in id_to_embedding:
-                            r["embedding"] = id_to_embedding[r["entity_id"]]
-                            r["embedding_model_id"] = model_id
-                            updated = True
-
-                if updated:
-                    self.client.setex(key, self.ttl, json.dumps(record_data))
-                    count += 1
-
-            except Exception:
-                continue
+        # Execute remaining
+        if len(pipe) > 0:
+            pipe.execute()
 
         return count
+
+    def get_embeddings_batch(self, entity_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+        """Get embeddings for multiple entities in batch.
+
+        Args:
+            entity_ids: List of entity IDs
+
+        Returns:
+            Dict mapping entity_id -> {embedding: List[float], embedding_model_id: str}
+            Missing entities are omitted from result.
+        """
+        if not entity_ids:
+            return {}
+
+        # Batch GET using pipeline
+        pipe = self.client.pipeline()
+        for entity_id in entity_ids:
+            emb_key = f"entity:emb:{entity_id}"
+            pipe.get(emb_key)
+
+        results = pipe.execute()
+
+        # Parse results
+        embeddings_map = {}
+        for entity_id, data in zip(entity_ids, results):
+            if data:
+                try:
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8")
+                    emb_data = json.loads(data)
+                    embeddings_map[entity_id] = emb_data
+                except Exception:
+                    continue
+
+        return embeddings_map
 
     def is_available(self) -> bool:
         try:
@@ -490,6 +603,73 @@ class ElasticsearchLayer(DatabaseLayer):
         except Exception as e:
             print(f"[ERROR ES] Fuzzy error: {e}")
             return []
+
+    def batch_search(self, queries: List[str], fuzzy: bool = False) -> List[List[DatabaseRecord]]:
+        """
+        Batch search using Elasticsearch msearch API.
+
+        Args:
+            queries: List of query strings
+            fuzzy: Whether to use fuzzy matching
+
+        Returns:
+            List of result lists, one per query (same order as input)
+        """
+        if not queries:
+            return []
+
+        # Normalize all queries
+        normalized_queries = [self.normalize_query(q) for q in queries]
+
+        # Build msearch request body
+        request_body = []
+        for query in normalized_queries:
+            # Header for each search
+            request_body.append({"index": self.index_name})
+
+            # Body for each search
+            if fuzzy and self.supports_fuzzy():
+                fuzzy_distance = self.fuzzy_config.max_distance
+                match_query = {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["label^2", "aliases^1.5", "description"],
+                        "fuzziness": fuzzy_distance,
+                        "prefix_length": self.fuzzy_config.prefix_length,
+                        "max_expansions": 50,
+                    }
+                }
+            else:
+                match_query = {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["label^2", "aliases^1.5", "description"],
+                        "type": "best_fields",
+                    }
+                }
+
+            body = self._build_query(match_query)
+            request_body.append(body)
+
+        try:
+            # Execute msearch
+            response = self.client.msearch(body=request_body)
+
+            # Process responses
+            results = []
+            for resp in response["responses"]:
+                if "error" in resp:
+                    print(f"[ERROR ES] Batch search error: {resp['error']}")
+                    results.append([])
+                else:
+                    hits = resp.get("hits", {}).get("hits", [])
+                    results.append(self._process_hits(hits))
+
+            return results
+
+        except Exception as e:
+            print(f"[ERROR ES] Batch search error: {e}")
+            return [[] for _ in queries]
 
     def _process_hits(self, hits: List[Dict]) -> List[DatabaseRecord]:
         records = []
@@ -960,6 +1140,78 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
             self._cache_write(mention, results, found_in_layer)
 
         return results
+
+    def batch_search(self, mentions: List[str]) -> List[List[DatabaseRecord]]:
+        """
+        Batch search through layers with fallback.
+
+        Args:
+            mentions: List of mention strings to search
+
+        Returns:
+            List of result lists, one per mention (same order as input)
+        """
+        if not mentions:
+            return []
+
+        # Try each layer in priority order
+        for layer in self.layers:
+            if not layer.is_available():
+                continue
+
+            # Check if layer supports batch_search
+            if not hasattr(layer, 'batch_search'):
+                # Fallback to individual searches
+                results = []
+                for mention in mentions:
+                    layer_results = []
+                    for mode in layer.config.search_mode:
+                        if mode == "exact":
+                            layer_results.extend(layer.search(mention))
+                        elif mode == "fuzzy":
+                            if layer.supports_fuzzy():
+                                layer_results.extend(layer.search_fuzzy(mention))
+
+                    if layer_results:
+                        layer_results = self.deduplicate_candidates(layer_results)
+                    results.append(layer_results)
+
+                # Check if we got any results
+                if any(results):
+                    return results
+            else:
+                # Use batch search
+                all_results = []
+
+                for mode in layer.config.search_mode:
+                    if mode == "exact":
+                        batch_results = layer.batch_search(mentions, fuzzy=False)
+                        all_results.append(batch_results)
+                    elif mode == "fuzzy":
+                        if layer.supports_fuzzy():
+                            batch_results = layer.batch_search(mentions, fuzzy=True)
+                            all_results.append(batch_results)
+
+                # Merge results from different modes
+                if all_results:
+                    merged = []
+                    for i in range(len(mentions)):
+                        mention_results = []
+                        for mode_results in all_results:
+                            if i < len(mode_results):
+                                mention_results.extend(mode_results[i])
+
+                        if mention_results:
+                            mention_results = self.deduplicate_candidates(mention_results)
+                        merged.append(mention_results)
+
+                    # Check if we got any results
+                    if any(merged):
+                        # TODO: Implement batch cache write
+                        return merged
+
+        # No results from any layer
+        return [[] for _ in mentions]
 
     def _cache_write(self, query: str, results: List[DatabaseRecord], source_layer: DatabaseLayer):
         """Write results to upper layers (higher priority = checked earlier)."""

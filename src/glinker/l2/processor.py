@@ -92,29 +92,91 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
             # Nested structure: [[entities_text1], [entities_text2], ...]
             all_candidates = []
 
-            for text_entities in mentions:
-                text_candidates = []
+            # OPTIMIZATION: Use batch search if available
+            if hasattr(self.component, 'batch_search'):
+                # Flatten mentions and track structure
+                flat_mentions = []
+                mention_counts = []
 
-                for entity in text_entities:
-                    # Extract text from L1Entity or dict
-                    mention_text = self._extract_mention_text(entity)
+                for text_entities in mentions:
+                    mention_texts = [self._extract_mention_text(e) for e in text_entities]
+                    flat_mentions.extend(mention_texts)
+                    mention_counts.append(len(mention_texts))
 
-                    # Search candidates for this mention
-                    candidates = self._execute_pipeline(mention_text, self.pipeline)
-                    text_candidates.extend(candidates)
+                # Batch search all mentions at once
+                if flat_mentions:
+                    batch_results = self.component.batch_search(flat_mentions)
 
-                all_candidates.append(text_candidates)
+                    # Apply post-processing pipeline to each result
+                    processed_results = []
+                    for result in batch_results:
+                        # Apply pipeline steps (filter, deduplicate, sort, limit)
+                        processed = result
+                        for step_name, step_kwargs in self.pipeline:
+                            if step_name != "search":  # Skip search, already done
+                                method = getattr(self.component, step_name)
+                                processed = method(processed, **step_kwargs)
+                        processed_results.append(processed)
+
+                    # Reconstruct nested structure
+                    idx = 0
+                    for count in mention_counts:
+                        text_candidates = []
+                        for _ in range(count):
+                            if idx < len(processed_results):
+                                text_candidates.extend(processed_results[idx])
+                                idx += 1
+                        all_candidates.append(text_candidates)
+                else:
+                    all_candidates = [[] for _ in mentions]
+            else:
+                # Fallback: individual searches
+                for text_entities in mentions:
+                    text_candidates = []
+
+                    for entity in text_entities:
+                        # Extract text from L1Entity or dict
+                        mention_text = self._extract_mention_text(entity)
+
+                        # Search candidates for this mention
+                        candidates = self._execute_pipeline(mention_text, self.pipeline)
+                        text_candidates.extend(candidates)
+
+                    all_candidates.append(text_candidates)
 
             return L2Output(candidates=all_candidates)
 
         # Flat structure: ["mention1", "mention2", ...]
         else:
-            all_candidates = []
+            # OPTIMIZATION: Use batch search if available
+            if hasattr(self.component, 'batch_search'):
+                # Extract mention texts
+                mention_texts = [self._extract_mention_text(m) for m in mentions]
 
-            for mention in mentions:
-                mention_text = self._extract_mention_text(mention)
-                candidates = self._execute_pipeline(mention_text, self.pipeline)
-                all_candidates.append(candidates)
+                # Batch search all at once
+                if mention_texts:
+                    batch_results = self.component.batch_search(mention_texts)
+
+                    # Apply post-processing pipeline to each result
+                    all_candidates = []
+                    for result in batch_results:
+                        # Apply pipeline steps (filter, deduplicate, sort, limit)
+                        processed = result
+                        for step_name, step_kwargs in self.pipeline:
+                            if step_name != "search":  # Skip search, already done
+                                method = getattr(self.component, step_name)
+                                processed = method(processed, **step_kwargs)
+                        all_candidates.append(processed)
+                else:
+                    all_candidates = []
+            else:
+                # Fallback: individual searches
+                all_candidates = []
+
+                for mention in mentions:
+                    mention_text = self._extract_mention_text(mention)
+                    candidates = self._execute_pipeline(mention_text, self.pipeline)
+                    all_candidates.append(candidates)
 
             if structure:
                 grouped = self._group_by_structure(all_candidates, structure)
