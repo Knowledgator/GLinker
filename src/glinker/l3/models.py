@@ -25,7 +25,7 @@ class L3Config(BaseConfig):
             "Threshold for BIO span extraction inside model.forward. "
             "Lower → more candidate spans constructed → higher recall. "
             "When None, falls back to `threshold`. "
-            "Useful to set low (0.1–0.2) so final `threshold` filters span_logits "
+            "Useful to set low (0.1-0.2) so final `threshold` filters span_logits "
             "without also cutting span candidates."
         ),
     )

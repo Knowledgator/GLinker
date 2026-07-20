@@ -24,8 +24,6 @@ from .registry import ProcessorRegistry, processor_registry
 from .gliner_model import GLinkerModel, SparseTokenModel
 
 __all__ = [
-    "GLinkerModel",
-    "SparseTokenModel",
     "BaseComponent",
     "BaseConfig",
     "BaseInput",
@@ -36,6 +34,7 @@ __all__ = [
     "DAGExecutor",
     "DAGPipeline",
     "FieldResolver",
+    "GLinkerModel",
     "InputConfig",
     "InputT",
     "OutputConfig",
@@ -45,6 +44,7 @@ __all__ = [
     "ProcessorFactory",
     "ProcessorRegistry",
     "ReshapeConfig",
+    "SparseTokenModel",
     "load_yaml",
     "processor_registry",
 ]

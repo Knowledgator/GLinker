@@ -69,7 +69,7 @@ class L4Processor(BaseProcessor[L4Config, L3Input, L3Output]):
         if l3_entities is not None:
             top_l3 = self._get_top_l3_entities(l3_entities, max_labels)
 
-            for idx, (text, text_top_l3) in enumerate(zip(texts_to_process, top_l3)):
+            for _idx, (text, text_top_l3) in enumerate(zip(texts_to_process, top_l3)):
                 if not text_top_l3:
                     all_entities.append([])
                     continue

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
-import logging
 import os
 import re
+import json
 import time
+import logging
 from typing import Any, List
 
 import torch
@@ -12,7 +12,7 @@ import torch
 from glinker.core.base import BaseProcessor
 from glinker.core.registry import processor_registry
 
-from .models import L3Input, L3Config, L3LLMConfig, L3Entity, L3Output
+from .models import L3Input, L3Config, L3Entity, L3Output, L3LLMConfig
 from .component import L3Component
 
 logger = logging.getLogger(__name__)
@@ -241,7 +241,7 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         candidates: List[Any],
         labels: List[str],
         label_to_candidate: dict,
-        embeddings: "torch.Tensor",
+        embeddings: torch.Tensor,
     ):
         """Cache pre-computed embeddings for candidates that don't have them yet.
 
@@ -438,7 +438,9 @@ class L3LLMProcessor:
         return [None] * len(batch_items)
 
     def _cand_info(self, c: Any) -> dict:
-        get = lambda attr: getattr(c, attr, c.get(attr, "") if isinstance(c, dict) else "")
+        def get(attr: str) -> Any:
+            return getattr(c, attr, c.get(attr, "") if isinstance(c, dict) else "")
+
         return {"label": get("label"), "description": get("description"), "entity_id": get("entity_id")}
 
     def __call__(
@@ -502,6 +504,6 @@ class L3LLMProcessor:
 
 
 @processor_registry.register("l3_llm")
-def create_l3_llm_processor(config_dict: dict, pipeline: list | None = None) -> L3LLMProcessor:
+def create_l3_llm_processor(config_dict: dict, _pipeline: list | None = None) -> L3LLMProcessor:
     config = L3LLMConfig(**config_dict)
     return L3LLMProcessor(config)

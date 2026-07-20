@@ -6,10 +6,10 @@ SparseTokenModel subclasses BiEncoderTokenModel and overrides forward().
 The scorer itself is untouched — sparse packing/unpacking wraps around it:
 
     preprocess_sparse(token_rep, label_rep)
-        → packs M mentions × their candidates into (M_total, max_sl, max_lc, H)
+        → packs M mentions x their candidates into (M_total, max_sl, max_lc, H)
 
     self.scorer(super_tok, super_lbl)
-        → (M_total, max_sl, max_lc, 3)  ← one GPU call vs O(seq × labels)
+        → (M_total, max_sl, max_lc, 3)  ← one GPU call vs O(seq x labels)
 
     postprocess_sparse(packed_scores, meta)
         → full (B, seq_len, num_classes, 3), fill=-10 for unscored positions
@@ -20,10 +20,9 @@ Without sparse config (_word_spans is None), forward is identical to parent.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import torch
-
 from gliner.modeling.base import BiEncoderTokenModel
 from gliner.modeling.outputs import GLiNERBaseOutput
 
@@ -73,8 +72,8 @@ class SparseTokenModel(BiEncoderTokenModel):
 
     def __init__(self, config: Any, *args, **kwargs) -> None:
         super().__init__(config, *args, **kwargs)
-        self._word_spans: Optional[List[List[Tuple[int, int]]]] = None
-        self._label_indices: Optional[List[List[List[int]]]] = None
+        self._word_spans: List[List[Tuple[int, int]]] | None = None
+        self._label_indices: List[List[List[int]]] | None = None
 
     # ------------------------------------------------------------------
     # Sparse config management
@@ -107,7 +106,7 @@ class SparseTokenModel(BiEncoderTokenModel):
         self,
         token_rep: torch.Tensor,   # (B, seq_len, H)
         label_rep: torch.Tensor,   # (B, num_classes, H)
-    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], dict]:
+    ) -> Tuple[torch.Tensor | None, torch.Tensor | None, dict]:
         """Pack sparse mentions into a single scorer call.
 
         Returns:
@@ -115,12 +114,12 @@ class SparseTokenModel(BiEncoderTokenModel):
             super_lbl:  ``(M_total, max_lc, H)``  — None if no valid spans.
             meta: scatter metadata consumed by ``postprocess_sparse``.
         """
-        batch_size, seq_len, H = token_rep.shape
+        batch_size, seq_len, _H = token_rep.shape
         device = token_rep.device
 
         all_tok: List[torch.Tensor] = []
         all_lbl: List[torch.Tensor] = []
-        batch_meta: List[Optional[dict]] = []
+        batch_meta: List[dict | None] = []
 
         for b in range(batch_size):
             ws_list = self._word_spans[b] if b < len(self._word_spans) else []
@@ -188,7 +187,7 @@ class SparseTokenModel(BiEncoderTokenModel):
 
     def postprocess_sparse(
         self,
-        packed_scores: Optional[torch.Tensor],  # (M_total, global_sl, global_lc, 3)
+        packed_scores: torch.Tensor | None,  # (M_total, global_sl, global_lc, 3)
         meta: dict,
     ) -> torch.Tensor:
         """Scatter packed scores back into a full (B, seq_len, num_classes, 3) tensor.
@@ -388,11 +387,11 @@ class GLinkerModel(BiEncoderTokenGLiNER):
         self,
         text: str,
         labels: List[str],
-        span_label_indices: Optional[List[List[int]]] = None,
-        input_spans: Optional[List[Dict[str, int]]] = None,
+        span_label_indices: List[List[int]] | None = None,
+        input_spans: List[Dict[str, int]] | None = None,
         flat_ner: bool = True,
         threshold: float = 0.5,
-        span_extraction_threshold: Optional[float] = None,
+        span_extraction_threshold: float | None = None,
         multi_label: bool = False,
         return_class_probs: bool = False,
         **kwargs: Any,
@@ -422,11 +421,11 @@ class GLinkerModel(BiEncoderTokenGLiNER):
         text: str,
         labels_embeddings: torch.Tensor,
         labels: List[str],
-        span_label_indices: Optional[List[List[int]]] = None,
-        input_spans: Optional[List[Dict[str, int]]] = None,
+        span_label_indices: List[List[int]] | None = None,
+        input_spans: List[Dict[str, int]] | None = None,
         flat_ner: bool = True,
         threshold: float = 0.5,
-        span_extraction_threshold: Optional[float] = None,
+        span_extraction_threshold: float | None = None,
         multi_label: bool = False,
         return_class_probs: bool = False,
         **kwargs: Any,
@@ -469,9 +468,9 @@ class GLinkerModel(BiEncoderTokenGLiNER):
         packing_config=None,
         return_class_probs=False,
         word_input_spans=None,
-        _word_spans: Optional[List] = None,
-        _label_indices: Optional[List] = None,
-        _span_extraction_threshold: Optional[float] = None,
+        _word_spans: List | None = None,
+        _label_indices: List | None = None,
+        _span_extraction_threshold: float | None = None,
         **external_inputs,
     ):
         """Override _process_batches to handle sparse scoring and external inputs.

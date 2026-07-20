@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 import torch
 
@@ -69,8 +69,8 @@ class L3Component(BaseComponent[L3Config]):
         self,
         text: str,
         labels: List[str],
-        input_spans: Optional[List[dict]] = None,
-        span_label_indices: Optional[List[List[int]]] = None,
+        input_spans: List[dict] | None = None,
+        span_label_indices: List[List[int]] | None = None,
     ) -> List[L3Entity]:
         """Predict entities with optional sparse scoring.
 
@@ -98,8 +98,8 @@ class L3Component(BaseComponent[L3Config]):
         text: str,
         labels: List[str],
         embeddings: torch.Tensor,
-        input_spans: Optional[List[dict]] = None,
-        span_label_indices: Optional[List[List[int]]] = None,
+        input_spans: List[dict] | None = None,
+        span_label_indices: List[List[int]] | None = None,
     ) -> List[L3Entity]:
         """Predict from pre-computed embeddings with optional sparse scoring."""
         if not labels:
