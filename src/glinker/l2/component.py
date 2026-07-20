@@ -248,9 +248,9 @@ class RedisLayer(DatabaseLayer):
 
     Benefits:
     - Embeddings stored once per entity (not duplicated across aliases)
-    - update_embeddings() is O(M) instead of O(N×M) where:
+    - update_embeddings() is O(M) instead of O(NxM) where:
       - M = entities to update
-      - N = total keys in Redis (entities × aliases)
+      - N = total keys in Redis (entities x aliases)
     - Reduced memory usage for large entity databases
     - Faster batch embedding updates
     """
@@ -459,7 +459,7 @@ class RedisLayer(DatabaseLayer):
     ) -> int:
         """Update embeddings in Redis entities.
 
-        Optimized: O(M) direct access instead of O(N×M) full scan.
+        Optimized: O(M) direct access instead of O(NxM) full scan.
         Embeddings stored separately at entity:emb:{entity_id}.
         """
         if not entity_ids or not embeddings:

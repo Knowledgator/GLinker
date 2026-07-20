@@ -59,13 +59,11 @@ python scripts/database/jsonl2postgresql.py
 - Use case: High-performance BiEncoder inference
 
 ```python
-from src.core.dag import DAGExecutor, DAGPipeline
-import yaml
+from glinker import ProcessorFactory
 
-with open("configs/pipelines/postgres/with_embeddings.yaml") as f:
-    pipeline = DAGPipeline(**yaml.safe_load(f))
-
-executor = DAGExecutor(pipeline)
+executor = ProcessorFactory.create_pipeline(
+    "configs/pipelines/postgres/with_embeddings.yaml"
+)
 
 # Step 1: Load entities
 executor.load_entities("entities.jsonl", target_layers=["postgres"])
@@ -233,13 +231,11 @@ python demo.py -c configs/pipelines/postgres_redis/default.yaml
 ```bash
 # Setup embeddings
 python -c "
-from src.core.dag import DAGExecutor, DAGPipeline
-import yaml
+from glinker import ProcessorFactory
 
-with open('configs/pipelines/postgres/with_embeddings.yaml') as f:
-    pipeline = DAGPipeline(**yaml.safe_load(f))
-
-executor = DAGExecutor(pipeline)
+executor = ProcessorFactory.create_pipeline(
+    'configs/pipelines/postgres/with_embeddings.yaml'
+)
 executor.load_entities('entities.jsonl', target_layers=['postgres'])
 executor.precompute_embeddings(target_layers=['postgres'])
 "
