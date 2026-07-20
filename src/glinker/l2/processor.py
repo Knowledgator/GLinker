@@ -90,7 +90,11 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
         # Check if mentions is nested (list of lists - one per text)
         if mentions and isinstance(mentions[0], (list, tuple)):
             # Nested structure: [[entities_text1], [entities_text2], ...]
-            all_candidates = []
+            # We build both:
+            #   all_flat[text_idx]         = flat list of all candidates (for L4 / backward compat)
+            #   all_per_span[text_idx][span_idx] = per-span lists (for L3 sparse scoring)
+            all_flat = []
+            all_per_span = []
 
             # OPTIMIZATION: Use batch search if available
             if hasattr(self.component, 'batch_search'):
@@ -110,41 +114,43 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
                     # Apply post-processing pipeline to each result
                     processed_results = []
                     for result in batch_results:
-                        # Apply pipeline steps (filter, deduplicate, sort, limit)
                         processed = result
                         for step_name, step_kwargs in self.pipeline:
-                            if step_name != "search":  # Skip search, already done
+                            if step_name != "search":
                                 method = getattr(self.component, step_name)
                                 processed = method(processed, **step_kwargs)
                         processed_results.append(processed)
 
-                    # Reconstruct nested structure
+                    # Reconstruct: flat (extend) for L4, per-span (append) for L3
                     idx = 0
                     for count in mention_counts:
-                        text_candidates = []
+                        text_flat: list = []
+                        text_per_span: list = []
                         for _ in range(count):
                             if idx < len(processed_results):
-                                text_candidates.extend(processed_results[idx])
+                                span_cands = processed_results[idx]
+                                text_flat.extend(span_cands)
+                                text_per_span.append(span_cands)
                                 idx += 1
-                        all_candidates.append(text_candidates)
+                        all_flat.append(text_flat)
+                        all_per_span.append(text_per_span)
                 else:
-                    all_candidates = [[] for _ in mentions]
+                    all_flat = [[] for _ in mentions]
+                    all_per_span = [[] for _ in mentions]
             else:
                 # Fallback: individual searches
                 for text_entities in mentions:
-                    text_candidates = []
-
+                    text_flat = []
+                    text_per_span = []
                     for entity in text_entities:
-                        # Extract text from L1Entity or dict
                         mention_text = self._extract_mention_text(entity)
+                        span_cands = self._execute_pipeline(mention_text, self.pipeline)
+                        text_flat.extend(span_cands)
+                        text_per_span.append(span_cands)
+                    all_flat.append(text_flat)
+                    all_per_span.append(text_per_span)
 
-                        # Search candidates for this mention
-                        candidates = self._execute_pipeline(mention_text, self.pipeline)
-                        text_candidates.extend(candidates)
-
-                    all_candidates.append(text_candidates)
-
-            return L2Output(candidates=all_candidates)
+            return L2Output(candidates=all_flat, per_span_candidates=all_per_span)
 
         # Flat structure: ["mention1", "mention2", ...]
         else:

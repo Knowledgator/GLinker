@@ -540,6 +540,30 @@ class ElasticsearchLayer(DatabaseLayer):
         )
         self.index_name = self.config.config["index_name"]
         self.popularity_boost = self.config.config.get("popularity_boost", False)
+        self._ensure_index()
+
+    def _ensure_index(self):
+        """Create index with explicit mapping so dense_vector is stored in _source."""
+        if self.client.indices.exists(index=self.index_name):
+            return
+        self.client.indices.create(
+            index=self.index_name,
+            body={
+                "mappings": {
+                    "properties": {
+                        "label": {"type": "text", "analyzer": "english"},
+                        "aliases": {"type": "text", "analyzer": "english"},
+                        "description": {"type": "text", "analyzer": "english"},
+                        "entity_id": {"type": "keyword"},
+                        "entity_type": {"type": "keyword"},
+                        "popularity": {"type": "long"},
+                        "embedding_model_id": {"type": "keyword"},
+                        # index:false keeps the vector in _source without building an HNSW index
+                        "embedding": {"type": "dense_vector", "index": False},
+                    }
+                }
+            },
+        )
 
     def _build_query(self, match_query: dict) -> dict:
         """Wrap a match query with optional popularity boosting.
@@ -551,8 +575,11 @@ class ElasticsearchLayer(DatabaseLayer):
         Uses ln2p (not ln1p) to avoid zeroing out entities with popularity=0,
         since ln(2+0)=0.69 while ln(1+0)=0.
         """
+        # dense_vector is excluded from _source by default in ES 8+; request it explicitly
+        _source = {"includes": ["*", "embedding", "embedding_model_id"]}
+
         if not self.popularity_boost:
-            return {"query": match_query, "size": 50}
+            return {"query": match_query, "size": 50, "_source": _source}
 
         return {
             "query": {
@@ -563,6 +590,7 @@ class ElasticsearchLayer(DatabaseLayer):
                 }
             },
             "size": 50,
+            "_source": _source,
         }
 
     def search(self, query: str) -> List[DatabaseRecord]:
