@@ -351,7 +351,7 @@ from glinker.core.factory import ProcessorFactory
 import yaml
 
 # Load pipeline config with multiple database layers
-with open("configs/pipelines/postgres_redis_basic.yaml") as f:
+with open("configs/pipelines/postgres_redis/default.yaml") as f:
     config = yaml.safe_load(f)
 
 executor = ProcessorFactory.create_from_dict(config, verbose=True)
@@ -379,7 +379,7 @@ from glinker.core.factory import ProcessorFactory
 import yaml
 
 # Use embedding-enabled config
-with open("configs/pipelines/postgres_redis_embeddings.yaml") as f:
+with open("configs/pipelines/postgres_redis/with_embeddings.yaml") as f:
     config = yaml.safe_load(f)
 
 executor = ProcessorFactory.create_from_dict(config, verbose=True)

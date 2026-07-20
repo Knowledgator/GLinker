@@ -8,6 +8,7 @@ import pytest
 def create_processor(processor_name, config_dict):
     """Helper to create processor from registry."""
     from glinker.core.registry import processor_registry
+
     factory = processor_registry.get(processor_name)
     return factory(config_dict=config_dict, pipeline=None)
 
@@ -21,16 +22,16 @@ class TestL3ProcessorCreation:
 
     def test_processor_has_component(self, l3_config_dict):
         processor = create_processor("l3_batch", l3_config_dict)
-        assert hasattr(processor, 'component')
+        assert hasattr(processor, "component")
         assert processor.component is not None
 
     def test_processor_has_config(self, l3_config_dict):
         processor = create_processor("l3_batch", l3_config_dict)
-        assert hasattr(processor, 'config')
+        assert hasattr(processor, "config")
 
     def test_processor_has_schema(self, l3_config_dict):
         processor = create_processor("l3_batch", l3_config_dict)
-        assert hasattr(processor, 'schema')
+        assert hasattr(processor, "schema")
 
 
 class TestL3ProcessorCall:
@@ -49,8 +50,7 @@ class TestL3ProcessorCall:
         ]
 
         result = processor(
-            texts=["TP53 causes cancer."],
-            candidates=[[candidates[0], candidates[1]]]
+            texts=["TP53 causes cancer."], candidates=[[candidates[0], candidates[1]]]
         )
 
         assert isinstance(result, L3Output)
@@ -84,12 +84,12 @@ class TestL3ProcessorLabelCreation:
         processor = create_processor("l3_batch", l3_config_dict)
         record = DatabaseRecord(entity_id="1", label="TP53", description="A gene")
 
-        label = processor._extract_label(record)
+        label = processor._format_label(record, "{label}")
         assert label == "TP53"
 
     def test_extract_label_from_string(self, l3_config_dict):
         processor = create_processor("l3_batch", l3_config_dict)
-        label = processor._extract_label("simple_label")
+        label = processor._format_label("simple_label", "{label}")
         assert label == "simple_label"
 
     def test_create_gliner_labels_with_template(self, l3_config_dict):
@@ -103,14 +103,15 @@ class TestL3ProcessorLabelCreation:
             DatabaseRecord(entity_id="2", label="BRCA1", description="Breast cancer gene"),
         ]
 
-        labels, mapping = processor._create_gliner_labels_with_mapping(candidates)
+        labels, span_label_indices, mapping = processor._build_sparse_inputs([candidates])
 
         assert len(labels) == 2
         assert "TP53: Tumor protein" in labels
         assert "BRCA1: Breast cancer gene" in labels
+        assert span_label_indices == [[0, 1]]
         assert len(mapping) == 2
 
-    def test_create_gliner_labels_deduplication(self, l3_config_dict):
+    def test_build_sparse_inputs_deduplicates_exact_labels(self, l3_config_dict):
         from glinker.l2.models import DatabaseRecord
 
         processor = create_processor("l3_batch", l3_config_dict)
@@ -119,12 +120,15 @@ class TestL3ProcessorLabelCreation:
         candidates = [
             DatabaseRecord(entity_id="1", label="TP53"),
             DatabaseRecord(entity_id="2", label="TP53"),  # Duplicate
-            DatabaseRecord(entity_id="3", label="tp53"),  # Case-insensitive duplicate
+            DatabaseRecord(entity_id="3", label="tp53"),
         ]
 
-        labels, mapping = processor._create_gliner_labels_with_mapping(candidates)
+        labels, span_label_indices, _mapping = processor._build_sparse_inputs([candidates])
 
-        assert len(labels) == 1  # Should deduplicate
+        assert (
+            len(labels) == 2
+        )  # Exact duplicates are merged; differently-cased labels are distinct.
+        assert span_label_indices == [[0, 0, 1]]
 
 
 class TestL3ProcessorRanking:
@@ -139,8 +143,8 @@ class TestL3ProcessorRanking:
             "template": "{label}",
             "ranking": [
                 {"field": "gliner_score", "weight": 0.7},
-                {"field": "popularity", "weight": 0.3}
-            ]
+                {"field": "popularity", "weight": 0.3},
+            ],
         }
 
         entities = [
@@ -184,7 +188,7 @@ class TestL3ProcessorPrecomputed:
                 entity_id="1",
                 label="TP53",
                 embedding=[0.1] * 768,
-                embedding_model_id=l3_config_dict["model_name"]
+                embedding_model_id=l3_config_dict["model_name"],
             ),
         ]
 
@@ -201,7 +205,7 @@ class TestL3ProcessorPrecomputed:
                 entity_id="1",
                 label="TP53",
                 embedding=[0.1] * 768,
-                embedding_model_id="different-model"  # Wrong model
+                embedding_model_id="different-model",  # Wrong model
             ),
         ]
 

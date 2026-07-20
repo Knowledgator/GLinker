@@ -100,4 +100,13 @@ class L2Input(BaseInput):
 class L2Output(BaseOutput):
     """L2 processor output."""
 
-    candidates: List[List[DatabaseRecord]] = Field(..., description="Candidates per mention/group")
+    candidates: List[List[DatabaseRecord]] = Field(
+        ..., description="Flat candidates per text — candidates[text_idx][candidate] (used by L4)"
+    )
+    per_span_candidates: List[List[List[DatabaseRecord]]] | None = Field(
+        None,
+        description=(
+            "Per-span candidates: per_span_candidates[text_idx][span_idx][candidate_idx]. "
+            "Populated when mentions are nested (List[List[entity]] from L1). Used by L3."
+        ),
+    )

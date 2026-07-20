@@ -1,9 +1,9 @@
 from typing import List
 
 import torch
-from gliner import GLiNER
 
 from glinker.core.base import BaseComponent
+from glinker.core.gliner_model import GLinkerModel
 
 from .models import L3Config, L3Entity
 
@@ -12,22 +12,24 @@ class L3Component(BaseComponent[L3Config]):
     """GLiNER-based entity linking component."""
 
     def _setup(self):
-        """Initialize GLiNER model."""
-        self.model = GLiNER.from_pretrained(
-            self.config.model_name, token=self.config.token, max_length=self.config.max_length
+        self.model = GLinkerModel.from_pretrained(
+            self.config.model_name,
+            token=self.config.token,
+            max_length=self.config.max_length,
         )
         self.model.to(self.config.device)
 
-        # Fix labels tokenizer max_length for BiEncoder models
-        # Some models have model_max_length not properly set (> 10^18)
+        # Fix labels tokenizer max_length for BiEncoder models.
+        # label_max_length takes priority; falls back to max_length.
+        _lbl_len = self.config.label_max_length or self.config.max_length
         if (
-            self.config.max_length is not None
+            _lbl_len is not None
             and hasattr(self.model, "data_processor")
             and hasattr(self.model.data_processor, "labels_tokenizer")
         ):
             tok = self.model.data_processor.labels_tokenizer
-            if tok.model_max_length > 100000:
-                tok.model_max_length = self.config.max_length
+            if tok.model_max_length > 100_000:
+                tok.model_max_length = _lbl_len
 
     @property
     def device(self):
@@ -35,7 +37,6 @@ class L3Component(BaseComponent[L3Config]):
 
     @property
     def supports_precomputed_embeddings(self) -> bool:
-        """Check if model supports precomputed embeddings (BiEncoder)."""
         return hasattr(self.model, "encode_labels") and self.model.config.labels_encoder is not None
 
     def get_available_methods(self) -> List[str]:
@@ -49,125 +50,85 @@ class L3Component(BaseComponent[L3Config]):
         ]
 
     def encode_labels(self, labels: List[str], batch_size: int = 32) -> torch.Tensor:
-        """
-        Encode labels using GLiNER's native label encoder.
-
-        Args:
-            labels: List of label strings to encode
-            batch_size: Batch size for encoding
-
-        Returns:
-            Tensor of shape (num_labels, hidden_size)
-
-        Raises:
-            NotImplementedError: If model doesn't support label encoding (not BiEncoder)
-        """
         if not self.supports_precomputed_embeddings:
             raise NotImplementedError(
                 f"Model {self.config.model_name} doesn't support label precomputation. "
                 "Only BiEncoder models support this feature."
             )
-
         return self.model.encode_labels(labels, batch_size=batch_size)
+
+    @property
+    def _span_extraction_threshold(self) -> float:
+        """BIO extraction threshold — falls back to threshold if not set."""
+        return self.config.span_extraction_threshold or self.config.threshold
+
+    def predict_entities(
+        self,
+        text: str,
+        labels: List[str],
+        input_spans: List[dict] | None = None,
+        span_label_indices: List[List[int]] | None = None,
+    ) -> List[L3Entity]:
+        """Predict entities with optional sparse scoring.
+
+        When both *input_spans* and *span_label_indices* are provided each
+        mention is scored only against its own candidates (sparse path).
+        Otherwise falls back to standard dense GLiNER scoring.
+        """
+        if not labels:
+            return []
+        entities = self.model.predict_entities(
+            text,
+            labels,
+            span_label_indices=span_label_indices,
+            input_spans=input_spans,
+            threshold=self.config.threshold,
+            span_extraction_threshold=self._span_extraction_threshold,
+            flat_ner=self.config.flat_ner,
+            multi_label=self.config.multi_label,
+            return_class_probs=True,
+        )
+        return [self._to_entity(e) for e in entities]
 
     def predict_with_embeddings(
         self,
         text: str,
         labels: List[str],
         embeddings: torch.Tensor,
-        input_spans: List[List[dict]] | None = None,
+        input_spans: List[dict] | None = None,
+        span_label_indices: List[List[int]] | None = None,
     ) -> List[L3Entity]:
-        """
-        Predict entities using pre-computed label embeddings.
-
-        Args:
-            text: Input text
-            labels: List of label strings (for output mapping)
-            embeddings: Pre-computed embeddings tensor (num_labels, hidden_size)
-            input_spans: Optional list of span dicts with 'start' and 'end' keys
-                         to constrain prediction to specific spans from L1
-
-        Returns:
-            List of L3Entity predictions
-        """
-        if not self.supports_precomputed_embeddings:
-            # Fallback to regular prediction
-            return self.predict_entities(text, labels, input_spans=input_spans)
-
-        kwargs = {
-            "threshold": self.config.threshold,
-            "flat_ner": self.config.flat_ner,
-            "multi_label": self.config.multi_label,
-            "return_class_probs": True,
-        }
-        if input_spans is not None:
-            kwargs["input_spans"] = input_spans
-
-        entities = self.model.predict_with_embeds(text, embeddings, labels, **kwargs)
-
-        return [
-            L3Entity(
-                text=e["text"],
-                label=e["label"],
-                start=e["start"],
-                end=e["end"],
-                score=e["score"],
-                class_probs=e.get("class_probs"),
-            )
-            for e in entities
-        ]
-
-    def predict_entities(
-        self, text: str, labels: List[str], input_spans: List[List[dict]] | None = None
-    ) -> List[L3Entity]:
-        """Predict entities using GLiNER.
-
-        Args:
-            text: Input text
-            labels: List of label strings
-            input_spans: Optional list of span dicts with 'start' and 'end' keys
-                         to constrain prediction to specific spans from L1
-        """
+        """Predict from pre-computed embeddings with optional sparse scoring."""
         if not labels:
             return []
+        if not self.supports_precomputed_embeddings:
+            return self.predict_entities(text, labels, input_spans, span_label_indices)
 
-        kwargs = {
-            "threshold": self.config.threshold,
-            "flat_ner": self.config.flat_ner,
-            "multi_label": self.config.multi_label,
-            "return_class_probs": True,
-        }
-        if input_spans is not None:
-            kwargs["input_spans"] = input_spans
-
-        entities = self.model.predict_entities(text, labels, **kwargs)
-
-        return [
-            L3Entity(
-                text=e["text"],
-                label=e["label"],
-                start=e["start"],
-                end=e["end"],
-                score=e["score"],
-                class_probs=e.get("class_probs"),
-            )
-            for e in entities
-        ]
+        entities = self.model.predict_with_embeds(
+            text,
+            embeddings,
+            labels,
+            span_label_indices=span_label_indices,
+            input_spans=input_spans,
+            threshold=self.config.threshold,
+            span_extraction_threshold=self._span_extraction_threshold,
+            flat_ner=self.config.flat_ner,
+            multi_label=self.config.multi_label,
+            return_class_probs=True,
+        )
+        return [self._to_entity(e) for e in entities]
 
     def filter_by_score(
         self, entities: List[L3Entity], threshold: float | None = None
     ) -> List[L3Entity]:
-        """Filter entities by confidence score."""
         threshold = threshold if threshold is not None else self.config.threshold
         return [e for e in entities if e.score >= threshold]
 
     def sort_by_position(self, entities: List[L3Entity]) -> List[L3Entity]:
-        """Sort entities by position in text."""
         return sorted(entities, key=lambda e: e.start)
 
     def deduplicate_entities(self, entities: List[L3Entity]) -> List[L3Entity]:
-        """Remove duplicate entities."""
-        seen = set()
+        seen: set = set()
         unique = []
         for entity in entities:
             key = (entity.text, entity.start, entity.end)
@@ -175,3 +136,14 @@ class L3Component(BaseComponent[L3Config]):
                 unique.append(entity)
                 seen.add(key)
         return unique
+
+    @staticmethod
+    def _to_entity(e: dict) -> L3Entity:
+        return L3Entity(
+            text=e["text"],
+            label=e["label"],
+            start=e["start"],
+            end=e["end"],
+            score=e["score"],
+            class_probs=e.get("class_probs"),
+        )
