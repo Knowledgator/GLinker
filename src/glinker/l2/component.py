@@ -323,10 +323,9 @@ class RedisLayer(DatabaseLayer):
                 # Store embedding separately if present
                 if embedding is not None:
                     emb_key = f"entity:emb:{r.entity_id}"
-                    emb_data = json.dumps({
-                        "embedding": embedding,
-                        "embedding_model_id": embedding_model_id
-                    })
+                    emb_data = json.dumps(
+                        {"embedding": embedding, "embedding_model_id": embedding_model_id}
+                    )
                     pipe.setex(emb_key, ttl, emb_data)
 
             # Store main cache data
@@ -372,10 +371,9 @@ class RedisLayer(DatabaseLayer):
             # Store embedding SEPARATELY (no duplication)
             if embedding is not None:
                 emb_key = f"entity:emb:{entity.entity_id}"
-                emb_data = json.dumps({
-                    "embedding": embedding,
-                    "embedding_model_id": embedding_model_id
-                })
+                emb_data = json.dumps(
+                    {"embedding": embedding, "embedding_model_id": embedding_model_id}
+                )
                 pipe.setex(emb_key, self.ttl, emb_data)
 
             # Execute in batches
@@ -470,10 +468,7 @@ class RedisLayer(DatabaseLayer):
 
         for entity_id, embedding in zip(entity_ids, embeddings):
             emb_key = f"entity:emb:{entity_id}"
-            emb_data = json.dumps({
-                "embedding": embedding,
-                "embedding_model_id": model_id
-            })
+            emb_data = json.dumps({"embedding": embedding, "embedding_model_id": model_id})
             pipe.setex(emb_key, self.ttl, emb_data)
             count += 1
 
@@ -1188,7 +1183,7 @@ class DatabaseChainComponent(BaseComponent[L2Config]):
                 continue
 
             # Check if layer supports batch_search
-            if not hasattr(layer, 'batch_search'):
+            if not hasattr(layer, "batch_search"):
                 # Fallback to individual searches
                 results = []
                 for mention in mentions:

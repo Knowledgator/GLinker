@@ -97,7 +97,7 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
             all_per_span = []
 
             # OPTIMIZATION: Use batch search if available
-            if hasattr(self.component, 'batch_search'):
+            if hasattr(self.component, "batch_search"):
                 # Flatten mentions and track structure
                 flat_mentions = []
                 mention_counts = []
@@ -155,7 +155,7 @@ class L2Processor(BaseProcessor[L2Config, L2Input, L2Output]):
         # Flat structure: ["mention1", "mention2", ...]
         else:
             # OPTIMIZATION: Use batch search if available
-            if hasattr(self.component, 'batch_search'):
+            if hasattr(self.component, "batch_search"):
                 # Extract mention texts
                 mention_texts = [self._extract_mention_text(m) for m in mentions]
 

@@ -104,8 +104,8 @@ class SparseTokenModel(BiEncoderTokenModel):
 
     def preprocess_sparse(
         self,
-        token_rep: torch.Tensor,   # (B, seq_len, H)
-        label_rep: torch.Tensor,   # (B, num_classes, H)
+        token_rep: torch.Tensor,  # (B, seq_len, H)
+        label_rep: torch.Tensor,  # (B, num_classes, H)
     ) -> Tuple[torch.Tensor | None, torch.Tensor | None, dict]:
         """Pack sparse mentions into a single scorer call.
 
@@ -132,7 +132,7 @@ class SparseTokenModel(BiEncoderTokenModel):
             M = len(ws_list)
             ws_t = torch.tensor([s for s, _ in ws_list], device=device)  # (M,)
             we_t = torch.tensor([e for _, e in ws_list], device=device)  # (M,)
-            slen_t = we_t - ws_t + 1                                      # (M,)
+            slen_t = we_t - ws_t + 1  # (M,)
             max_sl = int(slen_t.max())
 
             n_lbl = torch.tensor([len(li) for li in li_list], device=device)  # (M,)
@@ -144,26 +144,29 @@ class SparseTokenModel(BiEncoderTokenModel):
             # ── gather token reps: (M, max_sl, H) ────────────────────────
             t_range = torch.arange(max_sl, device=device)
             tok_pos = (ws_t.unsqueeze(1) + t_range).clamp(0, seq_len - 1)  # (M, max_sl)
-            tok = token_rep[b][tok_pos]                                      # (M, max_sl, H)
-            tok_valid = t_range < slen_t.unsqueeze(1)                       # (M, max_sl)
-            tok = tok * tok_valid.unsqueeze(-1)                              # zero padding
+            tok = token_rep[b][tok_pos]  # (M, max_sl, H)
+            tok_valid = t_range < slen_t.unsqueeze(1)  # (M, max_sl)
+            tok = tok * tok_valid.unsqueeze(-1)  # zero padding
 
             # ── gather label reps: (M, max_lc, H) ────────────────────────
             lbl_idx = torch.zeros(M, max_lc, device=device, dtype=torch.long)
             for m, li in enumerate(li_list):
                 if li:
-                    lbl_idx[m, :len(li)] = torch.tensor(li, device=device)
-            lbl = label_rep[b][lbl_idx]                                     # (M, max_lc, H)
+                    lbl_idx[m, : len(li)] = torch.tensor(li, device=device)
+            lbl = label_rep[b][lbl_idx]  # (M, max_lc, H)
 
             all_tok.append(tok)
             all_lbl.append(lbl)
-            batch_meta.append({
-                "b": b, "M": M,
-                "tok_pos": tok_pos,    # (M, max_sl)
-                "lbl_idx": lbl_idx,   # (M, max_lc)
-                "tok_valid": tok_valid,  # (M, max_sl)
-                "n_lbl": n_lbl,        # (M,)
-            })
+            batch_meta.append(
+                {
+                    "b": b,
+                    "M": M,
+                    "tok_pos": tok_pos,  # (M, max_sl)
+                    "lbl_idx": lbl_idx,  # (M, max_lc)
+                    "tok_valid": tok_valid,  # (M, max_sl)
+                    "n_lbl": n_lbl,  # (M,)
+                }
+            )
 
         meta = {
             "batch_meta": batch_meta,
@@ -208,21 +211,21 @@ class SparseTokenModel(BiEncoderTokenModel):
             if bm is None:
                 continue
             b, M = bm["b"], bm["M"]
-            tok_pos   = bm["tok_pos"]    # (M, local_sl)
-            lbl_idx   = bm["lbl_idx"]   # (M, local_lc)
+            tok_pos = bm["tok_pos"]  # (M, local_sl)
+            lbl_idx = bm["lbl_idx"]  # (M, local_lc)
             tok_valid = bm["tok_valid"]  # (M, local_sl)
-            n_lbl     = bm["n_lbl"]     # (M,)
+            n_lbl = bm["n_lbl"]  # (M,)
 
             # slice back to local (potentially smaller) shapes
             scores_b = packed_scores[
-                offset:offset + M,
-                :tok_pos.shape[1],
-                :lbl_idx.shape[1],
+                offset : offset + M,
+                : tok_pos.shape[1],
+                : lbl_idx.shape[1],
             ]  # (M, local_sl, local_lc, 3)
 
-            l_range   = torch.arange(lbl_idx.shape[1], device=meta["device"])
-            lbl_valid = l_range < n_lbl.unsqueeze(1)                        # (M, local_lc)
-            valid = tok_valid.unsqueeze(2) & lbl_valid.unsqueeze(1)         # (M, local_sl, local_lc)
+            l_range = torch.arange(lbl_idx.shape[1], device=meta["device"])
+            lbl_valid = l_range < n_lbl.unsqueeze(1)  # (M, local_lc)
+            valid = tok_valid.unsqueeze(2) & lbl_valid.unsqueeze(1)  # (M, local_sl, local_lc)
             vm, vt, vl = valid.nonzero(as_tuple=True)
             output[b, tok_pos[vm, vt], lbl_idx[vm, vl]] = scores_b[vm, vt, vl]
 
@@ -261,9 +264,13 @@ class SparseTokenModel(BiEncoderTokenModel):
         }
 
         prompts_embedding, prompts_embedding_mask, words_embedding, mask = self.get_representations(
-            input_ids, attention_mask,
-            labels_embeds, labels_input_ids, labels_attention_mask,
-            text_lengths, words_mask,
+            input_ids,
+            attention_mask,
+            labels_embeds,
+            labels_input_ids,
+            labels_attention_mask,
+            text_lengths,
+            words_mask,
             **encoder_kwargs,
         )
 
@@ -295,7 +302,9 @@ class SparseTokenModel(BiEncoderTokenModel):
         if labels is not None:
             loss = self.loss(scores, labels, prompts_embedding_mask, mask, **kwargs)
             if span_labels is not None:
-                span_loss = self.loss(span_logits, span_labels, prompts_embedding_mask, span_mask, **kwargs)
+                span_loss = self.loss(
+                    span_logits, span_labels, prompts_embedding_mask, span_mask, **kwargs
+                )
                 loss = self.config.token_loss_coef * loss + self.config.span_loss_coef * span_loss
 
         return GLiNERBaseOutput(
@@ -398,17 +407,23 @@ class GLinkerModel(BiEncoderTokenGLiNER):
     ) -> List[Dict[str, Any]]:
         if span_label_indices is None:
             return super().predict_entities(
-                text, labels,
-                flat_ner=flat_ner, threshold=threshold,
-                multi_label=multi_label, return_class_probs=return_class_probs,
+                text,
+                labels,
+                flat_ner=flat_ner,
+                threshold=threshold,
+                multi_label=multi_label,
+                return_class_probs=return_class_probs,
                 **kwargs,
             )
 
         word_spans, word_lbl_indices = build_word_spans(self, text, input_spans, span_label_indices)
         return self.inference(
-            [text], labels,
-            flat_ner=flat_ner, threshold=threshold,
-            multi_label=multi_label, return_class_probs=return_class_probs,
+            [text],
+            labels,
+            flat_ner=flat_ner,
+            threshold=threshold,
+            multi_label=multi_label,
+            return_class_probs=return_class_probs,
             input_spans=[input_spans],
             _word_spans=[word_spans],
             _label_indices=[word_lbl_indices],
@@ -434,9 +449,12 @@ class GLinkerModel(BiEncoderTokenGLiNER):
 
         if span_label_indices is None:
             return self.inference(
-                [text], labels,
-                flat_ner=flat_ner, threshold=threshold,
-                multi_label=multi_label, return_class_probs=return_class_probs,
+                [text],
+                labels,
+                flat_ner=flat_ner,
+                threshold=threshold,
+                multi_label=multi_label,
+                return_class_probs=return_class_probs,
                 labels_embeds=lbl_emb,
                 _span_extraction_threshold=span_extraction_threshold,
                 **kwargs,
@@ -444,9 +462,12 @@ class GLinkerModel(BiEncoderTokenGLiNER):
 
         word_spans, word_lbl_indices = build_word_spans(self, text, input_spans, span_label_indices)
         return self.inference(
-            [text], labels,
-            flat_ner=flat_ner, threshold=threshold,
-            multi_label=multi_label, return_class_probs=return_class_probs,
+            [text],
+            labels,
+            flat_ner=flat_ner,
+            threshold=threshold,
+            multi_label=multi_label,
+            return_class_probs=return_class_probs,
             input_spans=[input_spans],
             labels_embeds=lbl_emb,
             _word_spans=[word_spans],
@@ -486,14 +507,19 @@ class GLinkerModel(BiEncoderTokenGLiNER):
         """
         if _word_spans is None and not external_inputs and _span_extraction_threshold is None:
             return super()._process_batches(
-                data_loader, threshold, flat_ner, multi_label,
+                data_loader,
+                threshold,
+                flat_ner,
+                multi_label,
                 packing_config=packing_config,
                 return_class_probs=return_class_probs,
                 word_input_spans=word_input_spans,
             )
 
         # BIO extraction uses a separate (typically lower) threshold if provided.
-        bio_threshold = _span_extraction_threshold if _span_extraction_threshold is not None else threshold
+        bio_threshold = (
+            _span_extraction_threshold if _span_extraction_threshold is not None else threshold
+        )
 
         # Custom loop: handles sparse config AND external inputs (e.g. labels_embeds).
         outputs = []
@@ -503,8 +529,7 @@ class GLinkerModel(BiEncoderTokenGLiNER):
         for batch in data_loader:
             if not getattr(self, "onnx_model", False):
                 batch = {
-                    k: v.to(device) if isinstance(v, torch.Tensor) else v
-                    for k, v in batch.items()
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()
                 }
 
             current_batch_size = len(batch["tokens"])
@@ -513,8 +538,8 @@ class GLinkerModel(BiEncoderTokenGLiNER):
                 model_inputs["packing_config"] = packing_config
 
             if _word_spans is not None:
-                batch_ws = _word_spans[batch_offset:batch_offset + current_batch_size]
-                batch_li = _label_indices[batch_offset:batch_offset + current_batch_size]
+                batch_ws = _word_spans[batch_offset : batch_offset + current_batch_size]
+                batch_li = _label_indices[batch_offset : batch_offset + current_batch_size]
                 self.model.set_sparse_config(batch_ws, batch_li)
 
             try:
@@ -530,7 +555,9 @@ class GLinkerModel(BiEncoderTokenGLiNER):
 
             batch_input_spans = None
             if word_input_spans is not None:
-                batch_input_spans = word_input_spans[batch_offset:batch_offset + current_batch_size]
+                batch_input_spans = word_input_spans[
+                    batch_offset : batch_offset + current_batch_size
+                ]
 
             decoded = self.decoder.decode(
                 batch["tokens"],

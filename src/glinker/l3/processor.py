@@ -52,7 +52,7 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         all_entities = []
 
         for idx, (text, per_span_candidates) in enumerate(zip(texts, candidates)):
-            text_l1 = (l1_entities[idx] if l1_entities and idx < len(l1_entities) else [])
+            text_l1 = l1_entities[idx] if l1_entities and idx < len(l1_entities) else []
 
             # input_spans from L1 — char-level, aligned with per_span_candidates
             input_spans = [
@@ -274,9 +274,7 @@ class L3Processor(BaseProcessor[L3Config, L3Input, L3Output]):
         if hasattr(self._l2_processor, "component"):
             for layer in self._l2_processor.component.layers:
                 if layer.is_available():
-                    layer.update_embeddings(
-                        to_update_ids, to_update_vecs, self.config.model_name
-                    )
+                    layer.update_embeddings(to_update_ids, to_update_vecs, self.config.model_name)
                     break
 
     def _rank_entities(self, entities: List[L3Entity], candidates: List[Any]) -> List[L3Entity]:
@@ -441,7 +439,11 @@ class L3LLMProcessor:
         def get(attr: str) -> Any:
             return getattr(c, attr, c.get(attr, "") if isinstance(c, dict) else "")
 
-        return {"label": get("label"), "description": get("description"), "entity_id": get("entity_id")}
+        return {
+            "label": get("label"),
+            "description": get("description"),
+            "entity_id": get("entity_id"),
+        }
 
     def __call__(
         self,
@@ -463,20 +465,22 @@ class L3LLMProcessor:
                 start = entity["start"] if isinstance(entity, dict) else entity.start
                 end = entity["end"] if isinstance(entity, dict) else entity.end
                 top_cands = cands[: self.config.top_k]
-                items.append({
-                    "start": start,
-                    "end": end,
-                    "mention_text": text[start:end],
-                    "context": _mark_mention(text, start, end),
-                    "candidates": [self._cand_info(c) for c in top_cands],
-                    "raw_candidates": top_cands,
-                })
+                items.append(
+                    {
+                        "start": start,
+                        "end": end,
+                        "mention_text": text[start:end],
+                        "context": _mark_mention(text, start, end),
+                        "candidates": [self._cand_info(c) for c in top_cands],
+                        "raw_candidates": top_cands,
+                    }
+                )
 
             non_null = [(i, item) for i, item in enumerate(items) if item is not None]
             choices: dict[int, int | None] = {}
 
             for batch_start in range(0, len(non_null), self.config.batch_size):
-                batch = non_null[batch_start: batch_start + self.config.batch_size]
+                batch = non_null[batch_start : batch_start + self.config.batch_size]
                 results = self._call_with_retry([item for _, item in batch])
                 for local_idx, choice in enumerate(results):
                     choices[batch[local_idx][0]] = choice
@@ -489,14 +493,18 @@ class L3LLMProcessor:
                 if choice is None or not (0 <= choice < len(item["raw_candidates"])):
                     continue
                 cand = item["raw_candidates"][choice]
-                label = getattr(cand, "label", cand.get("label", "") if isinstance(cand, dict) else "")
-                text_entities.append(L3Entity(
-                    text=item["mention_text"],
-                    label=label,
-                    start=item["start"],
-                    end=item["end"],
-                    score=1.0,
-                ))
+                label = getattr(
+                    cand, "label", cand.get("label", "") if isinstance(cand, dict) else ""
+                )
+                text_entities.append(
+                    L3Entity(
+                        text=item["mention_text"],
+                        label=label,
+                        start=item["start"],
+                        end=item["end"],
+                        score=1.0,
+                    )
+                )
 
             all_entities.append(text_entities)
 

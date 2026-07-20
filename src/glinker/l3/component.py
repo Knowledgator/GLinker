@@ -37,10 +37,7 @@ class L3Component(BaseComponent[L3Config]):
 
     @property
     def supports_precomputed_embeddings(self) -> bool:
-        return (
-            hasattr(self.model, "encode_labels")
-            and self.model.config.labels_encoder is not None
-        )
+        return hasattr(self.model, "encode_labels") and self.model.config.labels_encoder is not None
 
     def get_available_methods(self) -> List[str]:
         return [
