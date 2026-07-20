@@ -129,27 +129,25 @@ builder.l3.configure(model="knowledgator/gliner-linker-large-v1.0")
 executor = DAGExecutor(builder.get_config())
 
 # 3. Load entities
-executor.load_entities("data/entities.jsonl", target_layers=["dict"])
+executor.load_entities("data/pubmesh_ontology.jsonl", target_layers=["dict"])
 
 # 4. Process text
 result = executor.execute({
-    "texts": ["Farnese Palace is one of the most important palaces in the city of Rome."]
+    "texts": ["BRCA1 mutations are associated with breast cancer risk."]
 })
 
 # 5. Get results
 l0_result = result.get("l0_result")
-for entity in l0_result.entities:
-    if entity.linked_entity:
-        print(f"{entity.mention_text} → {entity.linked_entity.label}")
-        print(f"  Confidence: {entity.linked_entity.score:.3f}")
+for text_entities in l0_result.entities:
+    for entity in text_entities:
+        if entity.linked_entity:
+            print(f"{entity.mention_text} → {entity.linked_entity.label}")
+            print(f"  Confidence: {entity.linked_entity.confidence:.3f}")
 ```
 
 **Output:**
 ```
-BRCA1 → BRCA1: Breast cancer type 1 susceptibility protein
-  Confidence: 0.923
-breast cancer → Breast Cancer: Malignant neoplasm of the breast
-  Confidence: 0.887
+# Labels and confidence values depend on the model and loaded entity database.
 ```
 
 ---
@@ -284,7 +282,7 @@ For full control over every layer, define the pipeline in YAML and load it:
 ```python
 from glinker import ProcessorFactory
 
-executor = ProcessorFactory.create_pipeline("configs/pipelines/dict/simple.yaml")
+executor = ProcessorFactory.create_pipeline("configs/pipelines/dict/default.yaml")
 executor.load_entities("data/entities.jsonl")
 result = executor.execute({"texts": ["TP53 mutations cause cancer"]})
 ```
